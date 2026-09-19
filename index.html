@@ -50,11 +50,17 @@
           <button class="tool" data-mode="delete" title="Remover (R)"><kbd>R</kbd> Remover</button>
         </div>
         <div class="tools">
+          <button id="btnUndo" title="Desfazer (Ctrl+Z)" aria-label="Desfazer" disabled>↶ Desfazer</button>
+          <button id="btnRedo" title="Refazer (Ctrl+Y)" aria-label="Refazer" disabled>↷ Refazer</button>
+          <span class="tools-sep"></span>
           <button id="btnCircle" title="Distribuir os vértices em círculo">Layout circular</button>
           <button id="btnFit" title="Ajustar o grafo ao tamanho da área">Ajustar à tela</button>
         </div>
       </div>
-      <p class="hint" id="hint"></p>
+      <div class="subbar">
+        <p class="hint" id="hint"></p>
+        <div class="legend" id="legend" hidden></div>
+      </div>
 
       <div class="canvas-wrap" id="canvasWrap" data-mode="move">
         <svg id="canvas" aria-label="Área de desenho do grafo">
@@ -66,6 +72,8 @@
             <marker id="arrow-back" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="12" markerHeight="12" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="arrow back"/></marker>
           </defs>
           <g id="edgesLayer"></g>
+          <g id="focusLayer"></g>
+          <g id="weightsLayer"></g>
           <line id="rubber" class="rubber"/>
           <g id="verticesLayer"></g>
         </svg>
@@ -74,17 +82,6 @@
           <strong>O grafo está vazio</strong>
           Escolha a ferramenta <em>Vértice</em> e clique na área para criar vértices,
           ou carregue um dos <em>Exemplos</em> no topo.
-        </div>
-        <div class="legend" id="legend" hidden>
-          <span><i class="dot st-unvisited"></i>Não visitado</span>
-          <span><i class="dot st-frontier"></i>Descoberto / na fila</span>
-          <span><i class="dot st-open"></i>Na pilha de recursão</span>
-          <span><i class="dot st-current"></i>Atual</span>
-          <span><i class="dot st-visited"></i>Concluído</span>
-          <span><i class="dot st-path"></i>Caminho</span>
-          <span><i class="bar tree"></i>Aresta da árvore</span>
-          <span><i class="bar active"></i>Aresta examinada</span>
-          <span><i class="bar back"></i>Aresta de retorno</span>
         </div>
         <div class="transpose-flag" id="transposeFlag" hidden>Exibindo o grafo transposto Gᵀ</div>
       </div>
@@ -108,7 +105,13 @@
           </label>
           <button id="btnStop" title="Encerrar a execução (Esc)">Encerrar</button>
         </div>
-        <p class="step-msg" id="stepMsg"></p>
+        <div class="player-body">
+          <p class="step-msg" id="stepMsg"></p>
+          <div class="player-ds" id="playerDs" hidden>
+            <span class="ds-title" id="dsTitle">Estrutura auxiliar</span>
+            <div class="ds" id="dsItems"></div>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -136,11 +139,6 @@
         <div class="card">
           <h3>Pseudocódigo</h3>
           <div class="pseudo" id="pseudo"></div>
-        </div>
-
-        <div class="card">
-          <h3 id="dsTitle">Estrutura auxiliar</h3>
-          <div class="ds" id="dsItems"></div>
         </div>
 
         <div class="card">
@@ -187,6 +185,7 @@
             <li><b>Mover:</b> arraste um vértice.</li>
             <li><b>Renomear / mudar peso:</b> duplo clique no vértice ou na aresta.</li>
             <li><b>Remover:</b> ferramenta <kbd>R</kbd>, botão direito, ou selecione e tecle <kbd>Delete</kbd>.</li>
+            <li><b>Desfazer / refazer:</b> <kbd>Ctrl</kbd>+<kbd>Z</kbd> e <kbd>Ctrl</kbd>+<kbd>Y</kbd>.</li>
             <li><b>Execução:</b> <kbd>Espaço</kbd> reproduz/pausa, <kbd>←</kbd> <kbd>→</kbd> navegam pelos passos, <kbd>Esc</kbd> encerra.</li>
             <li>O grafo é salvo automaticamente no navegador.</li>
           </ul>

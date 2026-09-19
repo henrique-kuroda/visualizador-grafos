@@ -199,9 +199,18 @@ class Graph {
     const g = new Graph();
     g.directed = !!data.directed;
     g.weighted = !!data.weighted;
+    // Mantém os ids numéricos do arquivo (o desfazer depende disso); ids
+    // gerados começam acima de todos eles, então nunca colidem.
+    const validId = id => Number.isInteger(Number(id)) && Number(id) > 0;
+    g.nextId = Math.max(0, ...data.vertices.filter(v => validId(v.id)).map(v => Number(v.id))) + 1;
+    const kept = new Set();
     const ref = new Map();
     for (const v of data.vertices) {
       const nv = g.addVertex(Number(v.x) || 0, Number(v.y) || 0, v.label);
+      if (validId(v.id) && !kept.has(Number(v.id))) {
+        nv.id = Number(v.id);
+        kept.add(nv.id);
+      }
       if (v.id != null) ref.set(String(v.id), nv.id);
       ref.set(`label:${v.label}`, nv.id);
     }

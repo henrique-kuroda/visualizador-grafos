@@ -58,12 +58,15 @@
     run: null,        // { name, steps, idx }
     timer: null,
     editor: null,
+    animateFocus: false, // animar a aresta examinada no próximo desenho
   };
 
   const svg = $('#canvas');
   const edgesLayer = $('#edgesLayer');
   const verticesLayer = $('#verticesLayer');
   const rubber = $('#rubber');
+  const focusLayer = $('#focusLayer');
+  const weightsLayer = $('#weightsLayer'); // acima da aresta em foco, para o peso não ser coberto
   const wrap = $('#canvasWrap');
   const editor = $('#inlineEditor');
 
@@ -141,7 +144,11 @@
 
   // ============================================================ desenho
 
-  function edgeGeometry(e, transpose) {
+  /**
+   * Geometria de uma aresta. `reverse` percorre o mesmo traçado de trás para
+   * frente (usado para animar a exploração no sentido em que ela acontece).
+   */
+  function edgeGeometry(e, transpose = false, reverse = false) {
     let a = g.vertex(e.from), b = g.vertex(e.to);
     if (transpose) [a, b] = [b, a];
     const dx = b.x - a.x, dy = b.y - a.y;
@@ -154,8 +161,9 @@
       const ddx = cx - p.x, ddy = cy - p.y, l = Math.hypot(ddx, ddy) || 1;
       return { x: p.x + (ddx / l) * r, y: p.y + (ddy / l) * r };
     };
-    const p0 = toward(a, R);
-    const p1 = toward(b, R + (g.directed ? 1 : 0));
+    let p0 = toward(a, R);
+    let p1 = toward(b, R + (g.directed && !reverse ? 1 : 0));
+    if (reverse) [p0, p1] = [p1, p0];
     const f = n => n.toFixed(1);
     const d = curved
       ? `M${f(p0.x)},${f(p0.y)} Q${f(cx)},${f(cy)} ${f(p1.x)},${f(p1.y)}`
@@ -166,56 +174,165 @@
     return { d, mid };
   }
 
+  // Os elementos SVG são reaproveitados entre renderizações (em vez de
+  // recriados), para que as mudanças de cor aconteçam com transição.
+  const vertexEls = new Map();
+  const edgeEls = new Map();
+
+  function svgEl(tag, cls, parent) {
+    const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+    if (cls) el.setAttribute('class', cls);
+    if (parent) parent.appendChild(el);
+    return el;
+  }
+
+  function pruneEls(map, alive) {
+    for (const [id, el] of map) {
+      if (!alive.has(id)) { el.root.remove(); el.weight?.remove(); map.delete(id); }
+    }
+  }
+
+  function getEdgeEl(e) {
+    let el = edgeEls.get(e.id);
+    if (!el) {
+      const root = svgEl('g', 'edge', edgesLayer);
+      root.dataset.edge = e.id;
+      el = {
+        root,
+        hit: svgEl('path', 'edge-hit', root),
+        line: svgEl('path', 'edge-line', root),
+        weight: svgEl('text', 'edge-weight', weightsLayer),
+      };
+      edgeEls.set(e.id, el);
+    }
+    return el;
+  }
+
+  function getVertexEl(v) {
+    let el = vertexEls.get(v.id);
+    if (!el) {
+      const root = svgEl('g', 'vertex', verticesLayer);
+      root.dataset.id = v.id;
+      svgEl('circle', 'halo', root).setAttribute('r', R + 6);
+      const body = svgEl('circle', 'body', root);
+      body.setAttribute('r', R);
+      const label = svgEl('text', 'label', root);
+      label.setAttribute('dy', '0.35em');
+      const badge = svgEl('g', 'badge', root);
+      badge.setAttribute('transform', `translate(${R + 4},${-R + 1})`);
+      const badgeBg = svgEl('rect', null, badge);
+      badgeBg.setAttribute('height', 18);
+      badgeBg.setAttribute('y', -9);
+      badgeBg.setAttribute('rx', 9);
+      const badgeText = svgEl('text', null, badge);
+      badgeText.setAttribute('dy', '0.35em');
+      el = { root, body, label, badge, badgeBg, badgeText };
+      vertexEls.set(v.id, el);
+    }
+    return el;
+  }
+
+  const setText = (node, text) => { if (node.textContent !== text) node.textContent = text; };
+
   function renderCanvas() {
     const step = currentStep();
     const transpose = !!step?.transpose;
-    const rank = { idle: 0, dim: 0, back: 1, tree: 2, path: 3, active: 4 };
+    const hasPath = !!step?.final && Object.values(step.es).includes('path');
 
-    const edgeClass = e => {
-      if (!step) return 'idle';
-      if (step.focusEdge === e.id) return 'active';
-      if (step.es[e.id]) return step.es[e.id];
-      return step.final && Object.values(step.es).includes('path') ? 'dim' : 'idle';
-    };
+    for (const e of g.edges) {
+      const el = getEdgeEl(e);
+      const cls = !step ? 'idle' : step.es[e.id] || (hasPath ? 'dim' : 'idle');
+      const { d, mid } = edgeGeometry(e, transpose);
+      el.root.setAttribute('class', `edge ${cls}`);
+      el.weight.setAttribute('class', `edge-weight ${cls}${step?.focusEdge === e.id ? ' active' : ''}`);
+      el.hit.setAttribute('d', d);
+      el.line.setAttribute('d', d);
+      if (g.directed) el.line.setAttribute('marker-end', `url(#arrow-${cls === 'dim' ? 'idle' : cls})`);
+      else el.line.removeAttribute('marker-end');
+      el.weight.style.display = g.weighted ? '' : 'none';
+      el.weight.setAttribute('x', mid.x.toFixed(1));
+      el.weight.setAttribute('y', mid.y.toFixed(1));
+      setText(el.weight, formatNum(e.weight));
+    }
+    pruneEls(edgeEls, new Set(g.edges.map(e => e.id)));
 
-    let html = '';
-    g.edges
-      .map(e => ({ e, cls: edgeClass(e) }))
-      .sort((a, b) => rank[a.cls] - rank[b.cls])
-      .forEach(({ e, cls }) => {
-        const { d, mid } = edgeGeometry(e, transpose);
-        const markerCls = cls === 'dim' ? 'idle' : cls;
-        const marker = g.directed ? ` marker-end="url(#arrow-${markerCls})"` : '';
-        html += `<g class="edge ${cls}" data-edge="${e.id}">` +
-          `<path class="edge-hit" d="${d}"/><path class="edge-line" d="${d}"${marker}/>` +
-          (g.weighted ? `<text class="edge-weight" x="${mid.x.toFixed(1)}" y="${mid.y.toFixed(1)}">${esc(formatNum(e.weight))}</text>` : '') +
-          '</g>';
-      });
-    edgesLayer.innerHTML = html;
-
-    let vh = '';
     for (const v of g.vertices) {
-      const st = step ? (step.vs[v.id] || 'unvisited') : 'idle';
-      const cls = ['vertex', `st-${st}`];
+      const el = getVertexEl(v);
+      const cls = ['vertex', `st-${step ? step.vs[v.id] || 'unvisited' : 'idle'}`];
       if (step && step.focusVertex === v.id) cls.push('focus');
       if (state.selected === v.id && !step) cls.push('selected');
       if (state.pending === v.id) cls.push('pending');
+      el.root.setAttribute('class', cls.join(' '));
+      el.root.setAttribute('transform', `translate(${v.x.toFixed(1)},${v.y.toFixed(1)})`);
       const comp = step?.comp[v.id];
-      const fill = comp ? ` style="fill:${COMP_COLORS[(comp - 1) % COMP_COLORS.length]}"` : '';
-      const badge = step?.badges[v.id];
-      vh += `<g class="${cls.join(' ')}" data-id="${v.id}" transform="translate(${v.x.toFixed(1)},${v.y.toFixed(1)})">` +
-        `<circle class="halo" r="${R + 6}"/><circle class="body" r="${R}"${fill}/>` +
-        `<text class="label" dy="0.35em">${esc(v.label)}</text>` +
-        (badge != null ? `<text class="badge" y="${R + 16}">${esc(badge)}</text>` : '') +
-        '</g>';
-    }
-    verticesLayer.innerHTML = vh;
+      el.body.style.fill = comp ? COMP_COLORS[(comp - 1) % COMP_COLORS.length] : '';
+      setText(el.label, v.label);
 
+      const badge = step?.badges[v.id];
+      el.badge.style.display = badge == null ? 'none' : '';
+      if (badge != null) {
+        setText(el.badgeText, String(badge));
+        const w = Math.max(20, String(badge).length * 7 + 12);
+        el.badgeBg.setAttribute('width', w);
+        el.badgeBg.setAttribute('x', -w / 2);
+      }
+    }
+    pruneEls(vertexEls, new Set(g.vertices.map(v => v.id)));
+
+    renderFocus(step);
     updateRubber();
     $('#emptyState').hidden = g.vertices.length > 0;
+    $('#hint').hidden = !!step;
     $('#legend').hidden = !step;
     $('#transposeFlag').hidden = !transpose;
   }
+
+  /**
+   * Aresta sendo examinada: desenhada por cima das demais, no sentido da
+   * exploração (do vértice atual para o vizinho). Ao avançar um passo, a
+   * linha é "traçada" e uma bolinha percorre a aresta.
+   */
+  function renderFocus(step) {
+    const animate = state.animateFocus;
+    state.animateFocus = false;
+    const e = step?.focusEdge != null ? g.edge(step.focusEdge) : null;
+    if (!e) { focusLayer.replaceChildren(); delete focusLayer.dataset.key; return; }
+
+    const start = step.transpose ? e.to : e.from;
+    const reverse = step.current != null && start !== step.current;
+    const { d } = edgeGeometry(e, step.transpose, reverse);
+    const key = `${e.id}:${reverse}`;
+    const line = focusLayer.querySelector('.focus-line');
+
+    if (!animate && line && focusLayer.dataset.key === key) {
+      line.setAttribute('d', d); // só reposiciona (ex.: arrastando um vértice)
+      focusLayer.querySelector('.focus-dot')?.remove();
+      return;
+    }
+    focusLayer.dataset.key = key;
+    focusLayer.replaceChildren();
+    const path = svgEl('path', `focus-line${animate ? ' animate' : ''}`, focusLayer);
+    path.setAttribute('d', d);
+    path.setAttribute('pathLength', '1');
+    if (g.directed && !reverse) path.setAttribute('marker-end', 'url(#arrow-active)');
+    if (!animate) return;
+
+    wrap.style.setProperty('--anim', `${animDuration()}s`);
+    const dot = svgEl('circle', 'focus-dot', focusLayer);
+    dot.setAttribute('r', 6);
+    const motion = svgEl('animateMotion', null, dot);
+    motion.setAttribute('dur', `${animDuration()}s`);
+    motion.setAttribute('path', d);
+    motion.setAttribute('fill', 'freeze');
+    motion.setAttribute('begin', 'indefinite');
+    motion.setAttribute('calcMode', 'spline');
+    motion.setAttribute('keyTimes', '0;1');
+    motion.setAttribute('keySplines', '0.3 0 0.2 1');
+    motion.beginElement();
+  }
+
+  /** Duração das animações (s), proporcional à velocidade escolhida. */
+  const animDuration = () => Math.min(0.6, (stepDelay() / 1000) * 0.45);
 
   function updateRubber() {
     const p = state.pending != null ? g.vertex(state.pending) : null;
@@ -330,9 +447,10 @@
   function renderDs(step) {
     const box = $('#dsItems');
     const ds = step?.ds;
-    $('#dsTitle').textContent = ds ? ds.title : 'Estrutura auxiliar';
-    box.className = `ds ${ds ? ds.kind : ''}`;
-    if (!ds) { box.innerHTML = '<span class="muted">—</span>'; return; }
+    $('#playerDs').hidden = !ds;
+    if (!ds) return;
+    $('#dsTitle').textContent = ds.title;
+    box.className = `ds ${ds.kind}`;
     if (!ds.items.length) { box.innerHTML = '<span class="muted">vazia</span>'; return; }
     const chips = ds.items.map((x, i) => `<span class="chip${i === 0 ? ' head' : ''}">${esc(x)}</span>`).join('');
     const start = { queue: 'início', stack: 'topo', pq: 'mínimo' }[ds.kind];
@@ -354,6 +472,13 @@
     if (!state.run) { log.innerHTML = ''; $('#logCount').textContent = ''; return; }
     log.innerHTML = state.run.steps.map((s, i) => `<li data-i="${i}">${esc(s.msg)}</li>`).join('');
     $('#logCount').textContent = `(${state.run.steps.length})`;
+  }
+
+  function buildLegend(name) {
+    $('#legend').innerHTML = Algorithms.INFO[name].legend.map(([key, text]) => {
+      const kind = key.startsWith('e-') ? 'bar' : key.startsWith('ring-') ? 'ring' : 'dot';
+      return `<span><i class="${kind} ${key}"></i>${esc(text)}</span>`;
+    }).join('');
   }
 
   function renderRunPanel() {
@@ -418,6 +543,7 @@
     state.pending = null;
     state.run = { name, steps: res.steps, idx: 0 };
     buildLog();
+    buildLegend(name);
     renderStep();
     play();
   }
@@ -431,7 +557,9 @@
 
   function goTo(i) {
     if (!state.run) return;
-    state.run.idx = Math.max(0, Math.min(i, state.run.steps.length - 1));
+    const next = Math.max(0, Math.min(i, state.run.steps.length - 1));
+    state.animateFocus = next === state.run.idx + 1;
+    state.run.idx = next;
     renderStep();
   }
 
@@ -498,30 +626,78 @@
     fill($('#dstSelect'), vs[vs.length - 1]);
   }
 
+  // ============================================================ histórico
+
+  const history = { undo: [], redo: [], limit: 100 };
+  const snapshot = () => JSON.stringify(g.toJSON());
+
+  function pushHistory(before) {
+    history.undo.push(before);
+    if (history.undo.length > history.limit) history.undo.shift();
+    history.redo = [];
+    updateHistoryButtons();
+  }
+
+  /** Executa uma alteração no grafo e registra o estado anterior para o "desfazer". */
+  function edit(fn) {
+    const before = snapshot();
+    fn();
+    if (snapshot() !== before) pushHistory(before);
+  }
+
+  function travel(from, to, message) {
+    if (!from.length) return;
+    cancelEditor();
+    to.push(snapshot());
+    g.load(JSON.parse(from.pop()));
+    state.pending = null;
+    state.drag = null;
+    if (!g.vertex(state.selected)) state.selected = null;
+    syncOptions();
+    structureChanged();
+    updateHistoryButtons();
+    toast(message);
+  }
+
+  const undo = () => travel(history.undo, history.redo, 'Alteração desfeita.');
+  const redo = () => travel(history.redo, history.undo, 'Alteração refeita.');
+
+  function updateHistoryButtons() {
+    $('#btnUndo').disabled = !history.undo.length;
+    $('#btnRedo').disabled = !history.redo.length;
+  }
+
   // ============================================================ edição
 
   function addVertexAt(p) {
     if (g.vertices.length >= MAX_VERTICES) { toast(`Limite de ${MAX_VERTICES} vértices atingido.`, 'error'); return; }
-    const v = g.addVertex(p.x, p.y);
-    clampPos(v);
-    state.selected = v.id;
-    structureChanged();
+    edit(() => {
+      const v = g.addVertex(p.x, p.y);
+      clampPos(v);
+      state.selected = v.id;
+      structureChanged();
+    });
   }
 
   function removeVertex(id) {
-    g.removeVertex(id);
-    if (state.selected === id) state.selected = null;
-    if (state.pending === id) state.pending = null;
-    structureChanged();
+    edit(() => {
+      g.removeVertex(id);
+      if (state.selected === id) state.selected = null;
+      if (state.pending === id) state.pending = null;
+      structureChanged();
+    });
   }
 
   function removeEdge(id) {
-    g.removeEdge(id);
-    structureChanged();
+    edit(() => {
+      g.removeEdge(id);
+      structureChanged();
+    });
   }
 
   function connect(u, v) {
-    const res = g.addEdge(u, v, 1);
+    let res;
+    edit(() => { res = g.addEdge(u, v, 1); });
     if (res.error) { toast(res.error, 'error'); renderCanvas(); return; }
     structureChanged();
     if (g.weighted) editWeight(res.edge);
@@ -553,7 +729,8 @@
   function editLabel(v) {
     openEditor(v.x, v.y, v.label, val => {
       if (val.trim() === v.label) return;
-      const err = g.renameVertex(v.id, val);
+      let err;
+      edit(() => { err = g.renameVertex(v.id, val); });
       if (err) toast(err, 'error'); else structureChanged();
     });
   }
@@ -564,7 +741,7 @@
       const w = Number(String(val).trim().replace(',', '.'));
       if (String(val).trim() === '' || !Number.isFinite(w)) { toast('Peso inválido: digite um número.', 'error'); return; }
       if (w === edge.weight) return;
-      edge.weight = w;
+      edit(() => { edge.weight = w; });
       structureChanged();
     });
   }
@@ -603,7 +780,7 @@
         return;
       }
       state.selected = v.id;
-      state.drag = { id: v.id, ox: p.x - v.x, oy: p.y - v.y, moved: false };
+      state.drag = { id: v.id, ox: p.x - v.x, oy: p.y - v.y, moved: false, before: snapshot() };
       svg.setPointerCapture(e.pointerId);
       renderCanvas();
       return;
@@ -634,7 +811,10 @@
 
   svg.addEventListener('pointerup', e => {
     if (state.drag) {
-      if (state.drag.moved) save();
+      if (state.drag.moved) {
+        if (snapshot() !== state.drag.before) pushHistory(state.drag.before);
+        save();
+      }
       state.drag = null;
       return;
     }
@@ -689,7 +869,13 @@
   // ---------- teclado
 
   document.addEventListener('keydown', e => {
-    if (e.target.closest?.('input, select, textarea') || e.ctrlKey || e.metaKey || e.altKey) return;
+    const typing = !!e.target.closest?.('input, select, textarea');
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && !typing) {
+      const k = e.key.toLowerCase();
+      if (k === 'z' && !e.shiftKey) { e.preventDefault(); undo(); return; }
+      if (k === 'y' || (k === 'z' && e.shiftKey)) { e.preventDefault(); redo(); return; }
+    }
+    if (typing || e.ctrlKey || e.metaKey || e.altKey) return;
     const key = e.key;
     const modes = { m: 'move', v: 'vertex', a: 'edge', r: 'delete' };
     if (modes[key.toLowerCase()]) { setMode(modes[key.toLowerCase()]); return; }
@@ -803,9 +989,12 @@
     const reader = new FileReader();
     reader.onload = () => {
       try {
-        g.load(JSON.parse(reader.result));
-        fitToView();
-        afterLoad();
+        const data = JSON.parse(reader.result);
+        edit(() => {
+          g.load(data);
+          fitToView();
+          afterLoad();
+        });
         toast(`Grafo "${file.name}" carregado.`);
       } catch (err) {
         toast(err instanceof SyntaxError ? 'O arquivo não é um JSON válido.' : err.message, 'error');
@@ -823,22 +1012,23 @@
   }));
 
   $('#optDirected').addEventListener('change', e => {
-    const merged = g.setDirected(e.target.checked);
+    let merged = 0;
+    edit(() => { merged = g.setDirected(e.target.checked); });
     if (merged) toast(`${merged} par(es) de arestas opostas foram mesclados em arestas não dirigidas.`);
     updateAlgoOptions();
     structureChanged();
   });
   $('#optWeighted').addEventListener('change', e => {
-    g.weighted = e.target.checked;
+    edit(() => { g.weighted = e.target.checked; });
     structureChanged();
     if (g.weighted && g.edges.length) toast('Dê um duplo clique em uma aresta para alterar o peso.');
   });
 
   $('#exampleSelect').addEventListener('change', e => {
-    if (e.target.value) loadExample(e.target.value);
+    if (e.target.value) edit(() => loadExample(e.target.value));
     e.target.value = '';
   });
-  $('#btnRandom').addEventListener('click', randomGraph);
+  $('#btnRandom').addEventListener('click', () => edit(randomGraph));
   $('#btnExport').addEventListener('click', exportGraph);
   $('#btnImport').addEventListener('click', () => $('#fileInput').click());
   $('#fileInput').addEventListener('change', e => {
@@ -848,11 +1038,14 @@
   });
   $('#btnClear').addEventListener('click', () => {
     if (g.vertices.length && !confirm('Apagar todos os vértices e arestas?')) return;
-    g.clear();
-    afterLoad();
+    const hadVertices = g.vertices.length > 0;
+    edit(() => { g.clear(); afterLoad(); });
+    if (hadVertices) toast('Grafo apagado. Use Ctrl+Z para desfazer.');
   });
-  $('#btnCircle').addEventListener('click', () => { circleLayout(); save(); renderCanvas(); });
-  $('#btnFit').addEventListener('click', () => { fitToView(true); save(); renderCanvas(); });
+  $('#btnCircle').addEventListener('click', () => edit(() => { circleLayout(); save(); renderCanvas(); }));
+  $('#btnFit').addEventListener('click', () => edit(() => { fitToView(true); save(); renderCanvas(); }));
+  $('#btnUndo').addEventListener('click', undo);
+  $('#btnRedo').addEventListener('click', redo);
 
   $('#algoSelect').addEventListener('change', updateAlgoForm);
   $('#btnRun').addEventListener('click', startRun);

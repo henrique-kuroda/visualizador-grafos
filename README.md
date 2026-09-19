@@ -30,6 +30,7 @@ Depois acesse http://localhost:8000.
 | Renomear vértice | Duplo clique no vértice |
 | Alterar peso | Duplo clique na aresta (com "Ponderado" ativo) |
 | Remover | Ferramenta **Remover** (`R`), botão direito, ou selecione e tecle `Delete` |
+| Desfazer / refazer | `Ctrl+Z` / `Ctrl+Y` (ou os botões da barra de ferramentas) |
 
 - Grafos **dirigidos** ou **não dirigidos**, **ponderados** ou não (chaves no topo).
 - Arestas opostas (A→B e B→A) são desenhadas curvas para não se sobreporem.
@@ -61,9 +62,11 @@ A aba **Propriedades** resume o grafo: número de vértices e arestas, densidade
 - Barra de tempo, controle de velocidade e lista de passos clicável
 - `Esc`: encerra a execução
 
-**Cores dos vértices:** cinza = não visitado · amarelo = descoberto / na fila ·
-laranja-claro = na pilha de recursão · laranja = atual · verde = concluído · roxo = caminho.
-**Arestas:** verde = árvore de busca · azul = sendo examinada · vermelho tracejado = aresta de retorno · roxo = caminho.
+Durante a execução:
+- a **fila / pilha / fila de prioridade** aparece ao lado da explicação do passo, embaixo do grafo;
+- a aresta examinada é "traçada" do vértice atual até o vizinho, e as cores mudam com transição suave;
+- o vértice atual pulsa, e cada vértice mostra um selo com seu valor (distância, d/f, componente);
+- a **legenda** acima do grafo mostra só as cores usadas pelo algoritmo escolhido.
 
 ## Estrutura do projeto
 

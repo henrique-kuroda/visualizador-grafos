@@ -17,7 +17,7 @@
  *   focusVertex  vizinho sendo examinado neste passo
  *   ds           estrutura auxiliar (fila, pilha, fila de prioridade)
  *   table        tabela de dados (dist, pai, tempos...)
- *   badges       texto pequeno exibido abaixo de cada vértice
+ *   badges       valor exibido no selo de cada vértice
  *   transpose    desenhar as arestas invertidas (Kosaraju, fase 2)
  * ========================================================================= */
 
@@ -25,6 +25,7 @@ const Algorithms = (() => {
 
   const INFO = {
     bfs: {
+      legend: [['unvisited', 'Não visitado'], ['frontier', 'Na fila'], ['current', 'Atual'], ['visited', 'Visitado'], ['e-tree', 'Aresta da árvore BFS'], ['e-active', 'Aresta examinada']],
       name: 'Busca em largura (BFS)',
       src: true,
       desc: 'Explora o grafo em camadas: primeiro todos os vizinhos da origem, depois os vizinhos dos vizinhos, e assim por diante. Usa uma fila (FIFO). Complexidade O(V + E).',
@@ -40,6 +41,7 @@ const Algorithms = (() => {
       ],
     },
     dfs: {
+      legend: [['unvisited', 'Não visitado'], ['open', 'Na pilha de recursão'], ['current', 'Atual'], ['visited', 'Finalizado'], ['e-tree', 'Aresta da árvore DFS'], ['e-active', 'Aresta examinada'], ['e-back', 'Aresta de retorno (ciclo)']],
       name: 'Busca em profundidade (DFS)',
       src: true,
       desc: 'Segue um caminho o mais fundo possível antes de voltar (backtracking). Usa recursão, ou seja, uma pilha. Registra os tempos de descoberta (d) e de finalização (f) e detecta ciclos pelas arestas de retorno. Complexidade O(V + E).',
@@ -55,6 +57,7 @@ const Algorithms = (() => {
       ],
     },
     'path-bfs': {
+      legend: [['unvisited', 'Não visitado'], ['frontier', 'Na fila'], ['current', 'Atual'], ['visited', 'Visitado'], ['e-tree', 'Aresta da árvore BFS'], ['e-active', 'Aresta examinada'], ['path', 'Caminho encontrado']],
       name: 'Menor caminho em nº de arestas (BFS)',
       src: true,
       dst: true,
@@ -73,6 +76,7 @@ const Algorithms = (() => {
       ],
     },
     dijkstra: {
+      legend: [['unvisited', 'dist = ∞'], ['frontier', 'Distância provisória'], ['current', 'Atual'], ['visited', 'Distância definitiva'], ['e-tree', 'Melhor aresta até o vértice'], ['e-active', 'Aresta examinada'], ['path', 'Menor caminho']],
       name: 'Menor caminho com pesos (Dijkstra)',
       src: true,
       dst: true,
@@ -90,6 +94,7 @@ const Algorithms = (() => {
       ],
     },
     components: {
+      legend: [['unvisited', 'Sem componente'], ['comp', 'Cor = componente'], ['ring-frontier', 'Borda: na fila'], ['ring-current', 'Borda: atual'], ['e-tree', 'Aresta usada na BFS'], ['e-active', 'Aresta examinada']],
       name: 'Componentes conexas',
       desc: 'Rotula cada vértice com a sua componente, repetindo uma BFS a partir de cada vértice ainda sem rótulo. O grafo é conexo se existir uma única componente. Em grafos dirigidos, calcula a conectividade fraca (ignora as direções). Complexidade O(V + E).',
       pseudo: [
@@ -104,6 +109,7 @@ const Algorithms = (() => {
       ],
     },
     scc: {
+      legend: [['unvisited', 'Não visitado'], ['open', 'Na pilha da DFS'], ['current', 'Atual'], ['visited', 'Terminou'], ['comp', 'Cor = componente'], ['e-tree', 'Aresta da DFS'], ['e-active', 'Aresta examinada']],
       name: 'Componentes fortemente conexas (Kosaraju)',
       directedOnly: true,
       desc: 'Em um grafo dirigido, dois vértices estão na mesma componente fortemente conexa se cada um alcança o outro. Kosaraju faz uma DFS para obter a ordem de término e depois outra DFS no grafo transposto, na ordem inversa: cada árvore é uma componente. Complexidade O(V + E).',

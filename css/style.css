@@ -125,7 +125,10 @@ kbd {
 .toolbar { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
 .tools { display: flex; gap: 6px; flex-wrap: wrap; }
 .tool.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 600; }
-.hint { margin: 0; color: var(--muted); font-size: 13px; min-height: 18px; }
+.tools-sep { width: 1px; background: var(--border); margin: 2px 4px; }
+.subbar { min-height: 24px; display: flex; align-items: center; }
+.hint { margin: 0; color: var(--muted); font-size: 13px; }
+.hint[hidden] { display: none; }
 
 /* ---------------------------------------------------------------- canvas */
 
@@ -147,14 +150,41 @@ kbd {
 #canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; user-select: none; }
 
 .edge-hit { fill: none; stroke: transparent; stroke-width: 16; cursor: pointer; }
-.edge-line { fill: none; stroke: var(--edge); stroke-width: 2.5; pointer-events: none; }
+.edge-line {
+  fill: none; stroke: var(--edge); stroke-width: 2.5; pointer-events: none;
+  transition: stroke .35s ease, stroke-width .35s ease, opacity .35s ease;
+}
 .edge.tree .edge-line { stroke: var(--tree); stroke-width: 4; }
 .edge.active .edge-line { stroke: var(--active); stroke-width: 5; }
 .edge.path .edge-line { stroke: var(--path); stroke-width: 6; }
 .edge.back .edge-line { stroke: var(--back); stroke-width: 3; stroke-dasharray: 7 5; }
-.edge.dim .edge-line { opacity: .45; }
+.edge.dim .edge-line { opacity: .35; }
+.edge-weight.dim { opacity: .5; }
 .canvas-wrap[data-mode="delete"] .edge:hover .edge-line { stroke: var(--danger); stroke-width: 4; }
 .canvas-wrap[data-mode="move"] .edge:hover .edge-line { stroke-width: 4; }
+
+.focus-line {
+  fill: none;
+  stroke: var(--active);
+  stroke-width: 5;
+  stroke-linecap: round;
+  pointer-events: none;
+}
+.focus-line.animate {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: draw-edge var(--anim, .45s) cubic-bezier(.3, 0, .2, 1) forwards;
+}
+.focus-dot {
+  fill: var(--active);
+  stroke: #fff;
+  stroke-width: 2;
+  pointer-events: none;
+  animation: fade-out .25s ease-in forwards;
+  animation-delay: var(--anim, .45s);
+}
+@keyframes draw-edge { to { stroke-dashoffset: 0; } }
+@keyframes fade-out { to { opacity: 0; } }
 
 .arrow.idle { fill: var(--edge); }
 .arrow.tree { fill: var(--tree); }
@@ -173,13 +203,16 @@ kbd {
   stroke-linejoin: round;
   pointer-events: none;
 }
-.edge.path .edge-weight { fill: var(--path); }
-.edge.active .edge-weight { fill: var(--active); }
+.edge-weight.path { fill: var(--path); }
+.edge-weight.active { fill: var(--active); }
 
 .vertex { cursor: grab; }
 .canvas-wrap[data-mode="edge"] .vertex { cursor: crosshair; }
 .canvas-wrap[data-mode="delete"] .vertex { cursor: pointer; }
-.vertex .body { fill: var(--v-fill); stroke: var(--v-stroke); stroke-width: 2.5; }
+.vertex .body {
+  fill: var(--v-fill); stroke: var(--v-stroke); stroke-width: 2.5;
+  transition: fill .35s ease, stroke .35s ease, stroke-width .35s ease;
+}
 .vertex .halo { fill: none; stroke: none; }
 .vertex .label {
   font: 700 14px "Segoe UI", system-ui, sans-serif;
@@ -187,15 +220,15 @@ kbd {
   text-anchor: middle;
   pointer-events: none;
 }
-.vertex .badge {
-  font: 700 11px ui-monospace, Consolas, monospace;
-  fill: #475569;
+.vertex .badge { pointer-events: none; }
+.vertex .badge rect { fill: #1e293b; stroke: #fff; stroke-width: 1.5; }
+.vertex .badge text {
+  font: 700 11.5px "Segoe UI", system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  fill: #fff;
   text-anchor: middle;
-  paint-order: stroke;
-  stroke: #fff;
-  stroke-width: 4px;
-  pointer-events: none;
 }
+.st-path .badge rect { fill: var(--path-stroke); }
 .vertex:hover .body { stroke-width: 3.5; }
 .vertex.selected .halo { stroke: var(--accent); stroke-width: 2.5; stroke-dasharray: 4 3; }
 .vertex.pending .halo { stroke: var(--accent); stroke-width: 3; }
@@ -206,6 +239,17 @@ kbd {
 .st-frontier .body { fill: var(--fr-fill); stroke: var(--fr-stroke); }
 .st-open .body { fill: var(--open-fill); stroke: var(--open-stroke); }
 .st-current .body { fill: var(--cur-fill); stroke: var(--cur-stroke); stroke-width: 4; }
+.st-current .halo {
+  stroke: var(--cur-stroke);
+  stroke-width: 3;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: pulse 1.4s ease-out infinite;
+}
+@keyframes pulse {
+  from { transform: scale(.8); opacity: .9; }
+  to { transform: scale(1.35); opacity: 0; }
+}
 .st-visited .body { fill: var(--vis-fill); stroke: var(--vis-stroke); }
 .st-path .body { fill: var(--path-fill); stroke: var(--path-stroke); stroke-width: 4; }
 
@@ -240,32 +284,27 @@ kbd {
 .empty-state[hidden], .legend[hidden], .transpose-flag[hidden] { display: none; }
 
 .legend {
-  position: absolute;
-  left: 10px;
-  bottom: 10px;
-  right: 10px;
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 14px;
-  font-size: 12px;
-  color: var(--muted);
-  pointer-events: none;
+  gap: 4px 16px;
+  font-size: 12.5px;
+  color: #44506a;
 }
-.legend span {
-  display: inline-flex; align-items: center; gap: 6px;
-  background: rgba(255, 255, 255, .85); border-radius: 6px; padding: 2px 6px;
-}
-.legend .dot { width: 12px; height: 12px; border-radius: 50%; border: 2px solid; }
-.legend .dot.st-unvisited { background: var(--unv-fill); border-color: var(--unv-stroke); }
-.legend .dot.st-frontier { background: var(--fr-fill); border-color: var(--fr-stroke); }
-.legend .dot.st-open { background: var(--open-fill); border-color: var(--open-stroke); }
-.legend .dot.st-current { background: var(--cur-fill); border-color: var(--cur-stroke); }
-.legend .dot.st-visited { background: var(--vis-fill); border-color: var(--vis-stroke); }
-.legend .dot.st-path { background: var(--path-fill); border-color: var(--path-stroke); }
-.legend .bar { width: 18px; height: 0; border-top: 4px solid; }
-.legend .bar.tree { border-color: var(--tree); }
-.legend .bar.active { border-color: var(--active); }
-.legend .bar.back { border-top: 3px dashed var(--back); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend .dot, .legend .ring { width: 13px; height: 13px; border-radius: 50%; border: 2px solid; }
+.legend .unvisited { background: var(--unv-fill); border-color: var(--unv-stroke); }
+.legend .frontier { background: var(--fr-fill); border-color: var(--fr-stroke); }
+.legend .open { background: var(--open-fill); border-color: var(--open-stroke); }
+.legend .current { background: var(--cur-fill); border-color: var(--cur-stroke); }
+.legend .visited { background: var(--vis-fill); border-color: var(--vis-stroke); }
+.legend .path { background: var(--path-fill); border-color: var(--path-stroke); }
+.legend .comp { border-color: #64748b; background: conic-gradient(#93c5fd 0 33%, #fca5a5 0 66%, #86efac 0); }
+.legend .ring-frontier { background: #fff; border: 3px solid var(--fr-stroke); }
+.legend .ring-current { background: #fff; border: 3px solid var(--cur-stroke); }
+.legend .bar { width: 20px; height: 0; border-top: 4px solid; border-radius: 2px; }
+.legend .e-tree { border-color: var(--tree); }
+.legend .e-active { border-color: var(--active); }
+.legend .e-back { border-top: 3px dashed var(--back); }
 
 .transpose-flag {
   position: absolute;
@@ -296,8 +335,24 @@ kbd {
 .counter { font-variant-numeric: tabular-nums; color: var(--muted); min-width: 92px; text-align: right; }
 .speed { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
 
+.player-body { display: flex; gap: 10px; margin-top: 8px; align-items: stretch; }
+.player-ds {
+  flex: 0 1 40%;
+  min-width: 200px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.player-ds[hidden] { display: none; }
+.ds-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.player-ds .ds .chip { font-size: 15px; }
+
 .step-msg {
-  margin: 8px 0 0;
+  flex: 1;
+  margin: 0;
   padding: 8px 12px;
   border-left: 4px solid var(--accent);
   background: var(--accent-soft);
@@ -451,6 +506,16 @@ table.matrix th.colcur { background: #ffedd5; }
 .toast.error { background: #b91c1c; }
 
 /* ------------------------------------------------------------ responsivo */
+
+@media (max-width: 700px) {
+  .player-body { flex-direction: column; }
+  .player-ds { flex-basis: auto; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; }
+  .focus-line.animate { stroke-dashoffset: 0; }
+}
 
 @media (max-width: 980px) {
   body { height: auto; }
