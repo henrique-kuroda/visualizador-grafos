@@ -1,0 +1,217 @@
+'use strict';
+
+/* =========================================================================
+ * Modelo do grafo: vértices, arestas e consultas de adjacência.
+ * ========================================================================= */
+
+/** 0 → "A", 25 → "Z", 26 → "AA", ... */
+function indexToLabel(i) {
+  let s = '';
+  i += 1;
+  while (i > 0) {
+    const r = (i - 1) % 26;
+    s = String.fromCharCode(65 + r) + s;
+    i = Math.floor((i - 1) / 26);
+  }
+  return s;
+}
+
+/** Ordenação "natural" de rótulos: A, B, ..., Z, AA / V2 antes de V10. */
+function compareLabels(a, b) {
+  return a.localeCompare(b, 'pt-BR', { numeric: true, sensitivity: 'base' });
+}
+
+/** Formata números para exibição (vírgula decimal, ∞). */
+function formatNum(x) {
+  if (x === Infinity) return '∞';
+  if (x === -Infinity) return '-∞';
+  if (Number.isInteger(x)) return String(x);
+  return String(Math.round(x * 1000) / 1000).replace('.', ',');
+}
+
+class Graph {
+  constructor() {
+    this.directed = false;
+    this.weighted = false;
+    this.clear();
+  }
+
+  clear() {
+    this.vertices = []; // { id, label, x, y }
+    this.edges = [];    // { id, from, to, weight }
+    this.nextId = 1;
+  }
+
+  // ---------- consultas ----------
+
+  vertex(id) {
+    return this.vertices.find(v => v.id === id) || null;
+  }
+
+  edge(id) {
+    return this.edges.find(e => e.id === id) || null;
+  }
+
+  label(id) {
+    const v = this.vertex(id);
+    return v ? v.label : '?';
+  }
+
+  sortedVertices() {
+    return [...this.vertices].sort((a, b) => compareLabels(a.label, b.label));
+  }
+
+  /** Peso efetivo de uma aresta (1 quando o grafo não é ponderado). */
+  weightOf(e) {
+    return this.weighted ? e.weight : 1;
+  }
+
+  /**
+   * Aresta que liga u → v. Em grafos não dirigidos a orientação
+   * armazenada é irrelevante.
+   */
+  findEdge(u, v) {
+    return this.edges.find(e =>
+      (e.from === u && e.to === v) ||
+      (!this.directed && e.from === v && e.to === u)
+    ) || null;
+  }
+
+  /**
+   * Vizinhos de u, ordenados pelo rótulo (deixa os algoritmos determinísticos).
+   *  - transpose: usa o grafo transposto (arestas invertidas)
+   *  - ignoreDirection: trata o grafo dirigido como não dirigido
+   */
+  neighbors(u, { transpose = false, ignoreDirection = false } = {}) {
+    const found = new Map();
+    for (const e of this.edges) {
+      let v = null;
+      if (this.directed && !ignoreDirection) {
+        if (!transpose && e.from === u) v = e.to;
+        else if (transpose && e.to === u) v = e.from;
+      } else if (e.from === u) {
+        v = e.to;
+      } else if (e.to === u) {
+        v = e.from;
+      }
+      if (v !== null && !found.has(v)) found.set(v, e);
+    }
+    return [...found]
+      .map(([v, edge]) => ({ v, edge, weight: this.weightOf(edge) }))
+      .sort((a, b) => compareLabels(this.label(a.v), this.label(b.v)));
+  }
+
+  degrees(id) {
+    let out = 0, inn = 0;
+    for (const e of this.edges) {
+      if (e.from === id) out++;
+      if (e.to === id) inn++;
+    }
+    return { out, in: inn, total: out + inn };
+  }
+
+  // ---------- edição ----------
+
+  nextLabel() {
+    const used = new Set(this.vertices.map(v => v.label.toUpperCase()));
+    for (let i = 0; ; i++) {
+      const l = indexToLabel(i);
+      if (!used.has(l)) return l;
+    }
+  }
+
+  addVertex(x, y, label) {
+    let l = label != null ? String(label).trim() : '';
+    if (!l || this.vertices.some(v => v.label.toLowerCase() === l.toLowerCase())) {
+      l = this.nextLabel();
+    }
+    const v = { id: this.nextId++, label: l, x, y };
+    this.vertices.push(v);
+    return v;
+  }
+
+  /** Retorna uma mensagem de erro ou null em caso de sucesso. */
+  renameVertex(id, label) {
+    const l = String(label).trim();
+    if (!l) return 'O rótulo não pode ser vazio.';
+    if (l.length > 8) return 'Use no máximo 8 caracteres.';
+    if (this.vertices.some(v => v.id !== id && v.label.toLowerCase() === l.toLowerCase())) {
+      return `Já existe um vértice chamado "${l}".`;
+    }
+    this.vertex(id).label = l;
+    return null;
+  }
+
+  removeVertex(id) {
+    this.vertices = this.vertices.filter(v => v.id !== id);
+    this.edges = this.edges.filter(e => e.from !== id && e.to !== id);
+  }
+
+  addEdge(u, v, weight = 1) {
+    if (u === v) return { error: 'Laços (aresta de um vértice para ele mesmo) não são permitidos.' };
+    if (this.findEdge(u, v)) return { error: 'Essa aresta já existe.' };
+    const e = { id: this.nextId++, from: u, to: v, weight };
+    this.edges.push(e);
+    return { edge: e };
+  }
+
+  removeEdge(id) {
+    this.edges = this.edges.filter(e => e.id !== id);
+  }
+
+  /**
+   * Muda o tipo do grafo. Ao virar não dirigido, pares A→B / B→A viram
+   * uma só aresta. Retorna quantas arestas foram mescladas.
+   */
+  setDirected(flag) {
+    this.directed = flag;
+    if (flag) return 0;
+    const seen = new Set();
+    const before = this.edges.length;
+    this.edges = this.edges.filter(e => {
+      const key = e.from < e.to ? `${e.from}-${e.to}` : `${e.to}-${e.from}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    return before - this.edges.length;
+  }
+
+  // ---------- serialização ----------
+
+  toJSON() {
+    return {
+      directed: this.directed,
+      weighted: this.weighted,
+      vertices: this.vertices.map(v => ({ id: v.id, label: v.label, x: Math.round(v.x), y: Math.round(v.y) })),
+      edges: this.edges.map(e => ({ from: e.from, to: e.to, weight: e.weight })),
+    };
+  }
+
+  /**
+   * Carrega um grafo a partir de um objeto { directed, weighted, vertices, edges }.
+   * As arestas podem referenciar vértices pelo id ou pelo rótulo.
+   */
+  load(data) {
+    if (!data || !Array.isArray(data.vertices) || !Array.isArray(data.edges)) {
+      throw new Error('Arquivo inválido: são esperados os campos "vertices" e "edges".');
+    }
+    const g = new Graph();
+    g.directed = !!data.directed;
+    g.weighted = !!data.weighted;
+    const ref = new Map();
+    for (const v of data.vertices) {
+      const nv = g.addVertex(Number(v.x) || 0, Number(v.y) || 0, v.label);
+      if (v.id != null) ref.set(String(v.id), nv.id);
+      ref.set(`label:${v.label}`, nv.id);
+    }
+    const resolve = r => ref.get(String(r)) ?? ref.get(`label:${r}`);
+    for (const e of data.edges) {
+      const from = resolve(e.from), to = resolve(e.to);
+      if (from == null || to == null) throw new Error(`Aresta com vértice inexistente: ${e.from} → ${e.to}.`);
+      const w = Number(e.weight ?? 1);
+      g.addEdge(from, to, Number.isFinite(w) ? w : 1);
+    }
+    Object.assign(this, g);
+  }
+}

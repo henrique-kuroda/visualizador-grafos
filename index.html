@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Visualizador de Grafos</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <svg class="logo" viewBox="0 0 32 32" aria-hidden="true">
+        <line x1="8" y1="9" x2="24" y2="9"/><line x1="8" y1="9" x2="16" y2="24"/><line x1="24" y1="9" x2="16" y2="24"/>
+        <circle cx="8" cy="9" r="4.5"/><circle cx="24" cy="9" r="4.5"/><circle cx="16" cy="24" r="4.5"/>
+      </svg>
+      <div>
+        <h1>Visualizador e Editor de Grafos</h1>
+        <p>Tema 9 · Grupo 05</p>
+      </div>
+    </div>
+
+    <div class="graph-options">
+      <label class="toggle"><input type="checkbox" id="optDirected"><span></span>Dirigido</label>
+      <label class="toggle"><input type="checkbox" id="optWeighted"><span></span>Ponderado</label>
+    </div>
+
+    <div class="file-actions">
+      <select id="exampleSelect" aria-label="Carregar exemplo">
+        <option value="">Exemplos…</option>
+        <option value="basico">Não dirigido (BFS / DFS)</option>
+        <option value="ponderado">Ponderado (Dijkstra)</option>
+        <option value="desconexo">Desconexo (componentes)</option>
+        <option value="dirigido">Dirigido (fortemente conexas)</option>
+      </select>
+      <button id="btnRandom" title="Gerar um grafo aleatório">Aleatório</button>
+      <button id="btnImport" title="Abrir um arquivo .json">Importar</button>
+      <button id="btnExport" title="Salvar o grafo em .json">Exportar</button>
+      <button id="btnClear" class="danger" title="Apagar todo o grafo">Limpar</button>
+      <input type="file" id="fileInput" accept=".json,application/json" hidden>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="stage">
+      <div class="toolbar" role="toolbar" aria-label="Ferramentas de edição">
+        <div class="tools">
+          <button class="tool active" data-mode="move" title="Mover / selecionar (M)"><kbd>M</kbd> Mover</button>
+          <button class="tool" data-mode="vertex" title="Adicionar vértice (V)"><kbd>V</kbd> Vértice</button>
+          <button class="tool" data-mode="edge" title="Adicionar aresta (A)"><kbd>A</kbd> Aresta</button>
+          <button class="tool" data-mode="delete" title="Remover (R)"><kbd>R</kbd> Remover</button>
+        </div>
+        <div class="tools">
+          <button id="btnCircle" title="Distribuir os vértices em círculo">Layout circular</button>
+          <button id="btnFit" title="Ajustar o grafo ao tamanho da área">Ajustar à tela</button>
+        </div>
+      </div>
+      <p class="hint" id="hint"></p>
+
+      <div class="canvas-wrap" id="canvasWrap" data-mode="move">
+        <svg id="canvas" aria-label="Área de desenho do grafo">
+          <defs>
+            <marker id="arrow-idle" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="11" markerHeight="11" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="arrow idle"/></marker>
+            <marker id="arrow-tree" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="13" markerHeight="13" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="arrow tree"/></marker>
+            <marker id="arrow-active" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="14" markerHeight="14" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="arrow active"/></marker>
+            <marker id="arrow-path" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="15" markerHeight="15" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="arrow path"/></marker>
+            <marker id="arrow-back" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="12" markerHeight="12" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="arrow back"/></marker>
+          </defs>
+          <g id="edgesLayer"></g>
+          <line id="rubber" class="rubber"/>
+          <g id="verticesLayer"></g>
+        </svg>
+        <input id="inlineEditor" class="inline-editor" autocomplete="off" hidden>
+        <div class="empty-state" id="emptyState">
+          <strong>O grafo está vazio</strong>
+          Escolha a ferramenta <em>Vértice</em> e clique na área para criar vértices,
+          ou carregue um dos <em>Exemplos</em> no topo.
+        </div>
+        <div class="legend" id="legend" hidden>
+          <span><i class="dot st-unvisited"></i>Não visitado</span>
+          <span><i class="dot st-frontier"></i>Descoberto / na fila</span>
+          <span><i class="dot st-open"></i>Na pilha de recursão</span>
+          <span><i class="dot st-current"></i>Atual</span>
+          <span><i class="dot st-visited"></i>Concluído</span>
+          <span><i class="dot st-path"></i>Caminho</span>
+          <span><i class="bar tree"></i>Aresta da árvore</span>
+          <span><i class="bar active"></i>Aresta examinada</span>
+          <span><i class="bar back"></i>Aresta de retorno</span>
+        </div>
+        <div class="transpose-flag" id="transposeFlag" hidden>Exibindo o grafo transposto Gᵀ</div>
+      </div>
+
+      <div class="player idle" id="player">
+        <div class="player-controls">
+          <button id="btnFirst" title="Primeiro passo (Home)" aria-label="Primeiro passo">«</button>
+          <button id="btnPrev" title="Passo anterior (←)" aria-label="Passo anterior">‹</button>
+          <button id="btnPlay" class="primary play" title="Reproduzir / pausar (espaço)" aria-label="Reproduzir">▶</button>
+          <button id="btnNext" title="Próximo passo (→)" aria-label="Próximo passo">›</button>
+          <button id="btnLast" title="Último passo (End)" aria-label="Último passo">»</button>
+          <input type="range" id="stepSlider" min="0" max="0" value="0" aria-label="Linha do tempo">
+          <span class="counter" id="stepCounter">—</span>
+          <label class="speed">Velocidade
+            <select id="speed">
+              <option value="0.5">0,5×</option>
+              <option value="1" selected>1×</option>
+              <option value="2">2×</option>
+              <option value="4">4×</option>
+            </select>
+          </label>
+          <button id="btnStop" title="Encerrar a execução (Esc)">Encerrar</button>
+        </div>
+        <p class="step-msg" id="stepMsg"></p>
+      </div>
+    </section>
+
+    <aside class="sidebar">
+      <nav class="tabs" role="tablist">
+        <button class="tab active" data-tab="algo">Algoritmos</button>
+        <button class="tab" data-tab="list">Lista</button>
+        <button class="tab" data-tab="matrix">Matriz</button>
+        <button class="tab" data-tab="info">Propriedades</button>
+      </nav>
+
+      <div class="tab-panel active" id="tab-algo">
+        <div class="card algo-form">
+          <label class="field">Algoritmo
+            <select id="algoSelect"></select>
+          </label>
+          <div class="field-row">
+            <label class="field" id="srcField">Origem <select id="srcSelect"></select></label>
+            <label class="field" id="dstField">Destino <select id="dstSelect"></select></label>
+          </div>
+          <p class="algo-desc" id="algoDesc"></p>
+          <button id="btnRun" class="primary wide">Executar passo a passo</button>
+        </div>
+
+        <div class="card">
+          <h3>Pseudocódigo</h3>
+          <div class="pseudo" id="pseudo"></div>
+        </div>
+
+        <div class="card">
+          <h3 id="dsTitle">Estrutura auxiliar</h3>
+          <div class="ds" id="dsItems"></div>
+        </div>
+
+        <div class="card">
+          <h3>Tabela</h3>
+          <div class="table-wrap" id="stateTable"></div>
+        </div>
+
+        <div class="card">
+          <h3>Passos <span class="muted" id="logCount"></span></h3>
+          <ol class="log" id="stepLog"></ol>
+        </div>
+      </div>
+
+      <div class="tab-panel" id="tab-list">
+        <div class="card">
+          <h3>Lista de adjacência</h3>
+          <p class="note" id="listNote"></p>
+          <div id="adjList"></div>
+        </div>
+      </div>
+
+      <div class="tab-panel" id="tab-matrix">
+        <div class="card">
+          <h3>Matriz de adjacência</h3>
+          <p class="note" id="matrixNote"></p>
+          <div class="table-wrap" id="adjMatrix"></div>
+        </div>
+      </div>
+
+      <div class="tab-panel" id="tab-info">
+        <div class="card">
+          <h3>Resumo</h3>
+          <div id="graphInfo"></div>
+        </div>
+        <div class="card">
+          <h3>Graus</h3>
+          <div class="table-wrap" id="degreeTable"></div>
+        </div>
+        <div class="card help">
+          <h3>Como usar</h3>
+          <ul>
+            <li><b>Criar vértice:</b> ferramenta <kbd>V</kbd> e clique na área (ou duplo clique no modo Mover).</li>
+            <li><b>Criar aresta:</b> ferramenta <kbd>A</kbd>, clique na origem e depois no destino (ou arraste de um ao outro).</li>
+            <li><b>Mover:</b> arraste um vértice.</li>
+            <li><b>Renomear / mudar peso:</b> duplo clique no vértice ou na aresta.</li>
+            <li><b>Remover:</b> ferramenta <kbd>R</kbd>, botão direito, ou selecione e tecle <kbd>Delete</kbd>.</li>
+            <li><b>Execução:</b> <kbd>Espaço</kbd> reproduz/pausa, <kbd>←</kbd> <kbd>→</kbd> navegam pelos passos, <kbd>Esc</kbd> encerra.</li>
+            <li>O grafo é salvo automaticamente no navegador.</li>
+          </ul>
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="js/graph.js"></script>
+  <script src="js/algorithms.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
