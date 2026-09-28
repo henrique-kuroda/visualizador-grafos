@@ -18,7 +18,7 @@
   const HINTS = {
     move: 'Arraste os vértices para organizá-los. Duplo clique renomeia um vértice ou altera o peso de uma aresta; duplo clique no vazio cria um vértice.',
     vertex: 'Clique em uma área vazia para criar um vértice.',
-    edge: 'Clique no vértice de origem e depois no de destino (ou arraste de um até o outro). Esc cancela.',
+    edge: 'Clique no vértice de origem e depois no de destino (ou arraste de um até o outro). Para cancelar, clique de novo no mesmo vértice ou tecle Esc.',
     delete: 'Clique em um vértice ou aresta para removê-lo.',
   };
 
@@ -96,9 +96,14 @@
     }
   }
 
+  /**
+   * Tamanho útil da área de desenho. Enquanto ela não tem tamanho (aba em
+   * segundo plano, janela minimizada), usa um padrão: sem isso, os vértices
+   * seriam posicionados fora da tela.
+   */
   function canvasSize() {
     const r = svg.getBoundingClientRect();
-    return { w: r.width, h: r.height };
+    return { w: r.width > 50 ? r.width : 800, h: r.height > 50 ? r.height : 500 };
   }
 
   function pointFrom(e) {
@@ -546,6 +551,8 @@
     buildLegend(name);
     renderStep();
     play();
+    // Foco no player: o Espaço passa a pausar/continuar em vez de reexecutar.
+    $('#btnPlay').focus({ preventScroll: true });
   }
 
   function stopRun() {
@@ -647,7 +654,7 @@
 
   function travel(from, to, message) {
     if (!from.length) return;
-    cancelEditor();
+    cancelEditor(true);
     to.push(snapshot());
     g.load(JSON.parse(from.pop()));
     state.pending = null;
@@ -696,20 +703,22 @@
   }
 
   function connect(u, v) {
-    let res;
-    edit(() => { res = g.addEdge(u, v, 1); });
+    const before = snapshot();
+    const res = g.addEdge(u, v, 1);
     if (res.error) { toast(res.error, 'error'); renderCanvas(); return; }
     structureChanged();
-    if (g.weighted) editWeight(res.edge);
+    // Em grafo ponderado, a aresta e o peso viram um único passo de desfazer.
+    if (g.weighted) editWeight(res.edge, before);
+    else pushHistory(before);
   }
 
-  function openEditor(x, y, value, onCommit) {
+  function openEditor(x, y, value, onCommit, onCancel = null) {
     commitEditor();
     editor.value = value;
     editor.style.left = `${x}px`;
     editor.style.top = `${y}px`;
     editor.hidden = false;
-    state.editor = { onCommit };
+    state.editor = { onCommit, onCancel };
     requestAnimationFrame(() => { editor.focus(); editor.select(); });
   }
 
@@ -721,9 +730,12 @@
     onCommit(editor.value);
   }
 
-  function cancelEditor() {
+  /** `silent` descarta a edição sem avisar quem abriu o editor (usado pelo desfazer). */
+  function cancelEditor(silent = false) {
+    const open = state.editor;
     state.editor = null;
     editor.hidden = true;
+    if (!silent) open?.onCancel?.();
   }
 
   function editLabel(v) {
@@ -735,15 +747,24 @@
     });
   }
 
-  function editWeight(edge) {
+  /**
+   * `historyBefore` permite juntar a criação da aresta e a digitação do peso
+   * em um único passo de desfazer.
+   */
+  function editWeight(edge, historyBefore = null) {
+    const before = historyBefore ?? snapshot();
+    const registrar = () => { if (snapshot() !== before) pushHistory(before); };
     const { mid } = edgeGeometry(edge, false);
     openEditor(mid.x, mid.y, formatNum(edge.weight), val => {
       const w = Number(String(val).trim().replace(',', '.'));
-      if (String(val).trim() === '' || !Number.isFinite(w)) { toast('Peso inválido: digite um número.', 'error'); return; }
-      if (w === edge.weight) return;
-      edit(() => { edge.weight = w; });
-      structureChanged();
-    });
+      if (String(val).trim() === '' || !Number.isFinite(w)) {
+        toast('Peso inválido: digite um número.', 'error');
+      } else if (w !== edge.weight) {
+        edge.weight = w;
+        structureChanged();
+      }
+      registrar();
+    }, registrar);
   }
 
   function setMode(mode) {
@@ -769,6 +790,7 @@
     if (v) {
       if (mode === 'delete') { removeVertex(v.id); return; }
       if (mode === 'edge') {
+        if (state.pending === v.id) { state.pending = null; renderCanvas(); return; }
         if (state.pending != null && state.pending !== v.id) {
           const from = state.pending;
           state.pending = null;
@@ -892,6 +914,8 @@
       return;
     }
     if (!state.run) return;
+    // Espaço/setas pertencem ao elemento focado quando ele é um botão ou link.
+    if (e.target.closest?.('button, a[href], [role="button"]')) return;
     const actions = {
       ArrowRight: () => { pause(); goTo(state.run.idx + 1); },
       ArrowLeft: () => { pause(); goTo(state.run.idx - 1); },
@@ -949,8 +973,8 @@
 
   function randomGraph() {
     const n = 6 + Math.floor(Math.random() * 4);
-    const directed = g.directed, weighted = g.weighted;
-    g.clear();
+    const directed = g.directed;
+    g.clear(); // clear() preserva as opções "dirigido" e "ponderado"
     for (let i = 0; i < n; i++) g.addVertex(0, 0);
     circleLayout();
     const ids = g.vertices.map(v => v.id);
@@ -961,8 +985,6 @@
         if (Math.random() < p) g.addEdge(u, v, 1 + Math.floor(Math.random() * 9));
       }
     }
-    g.directed = directed;
-    g.weighted = weighted;
     afterLoad();
   }
 
@@ -990,12 +1012,22 @@
     reader.onload = () => {
       try {
         const data = JSON.parse(reader.result);
+        if (Array.isArray(data.vertices) && data.vertices.length > MAX_VERTICES) {
+          toast(`O arquivo tem ${data.vertices.length} vértices; o limite é ${MAX_VERTICES}.`, 'error');
+          return;
+        }
+        let ajustes;
         edit(() => {
-          g.load(data);
+          ajustes = g.load(data);
           fitToView();
           afterLoad();
         });
-        toast(`Grafo "${file.name}" carregado.`);
+        const avisos = [
+          ajustes.loops && `${ajustes.loops} laço(s) descartado(s)`,
+          ajustes.duplicadas && `${ajustes.duplicadas} aresta(s) repetida(s) descartada(s)`,
+          ajustes.renomeados && `${ajustes.renomeados} rótulo(s) repetido(s) renomeado(s)`,
+        ].filter(Boolean);
+        toast(`Grafo "${file.name}" carregado.` + (avisos.length ? ` Ajustes: ${avisos.join('; ')}.` : ''));
       } catch (err) {
         toast(err instanceof SyntaxError ? 'O arquivo não é um JSON válido.' : err.message, 'error');
       }
@@ -1062,8 +1094,22 @@
     if (li) { pause(); goTo(Number(li.dataset.i)); }
   });
 
+  // Quando a área muda de tamanho, as posições acompanham proporcionalmente.
+  // (Antes elas eram grudadas na borda, o que achatava o grafo de vez.)
+  let lastSize = canvasSize();
+  let resizeSaveTimer = null;
   new ResizeObserver(() => {
-    g.vertices.forEach(clampPos);
+    const r = svg.getBoundingClientRect();
+    if (r.width < 50 || r.height < 50) return; // área ainda sem tamanho utilizável
+    const w = r.width, h = r.height;
+    const mudou = Math.abs(w - lastSize.w) > 0.5 || Math.abs(h - lastSize.h) > 0.5;
+    if (mudou && g.vertices.length) {
+      const sx = w / lastSize.w, sy = h / lastSize.h;
+      g.vertices.forEach(v => { v.x *= sx; v.y *= sy; clampPos(v); });
+      clearTimeout(resizeSaveTimer);
+      resizeSaveTimer = setTimeout(save, 400);
+    }
+    lastSize = { w, h };
     renderCanvas();
   }).observe(wrap);
 

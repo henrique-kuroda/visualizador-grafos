@@ -191,6 +191,7 @@ class Graph {
   /**
    * Carrega um grafo a partir de um objeto { directed, weighted, vertices, edges }.
    * As arestas podem referenciar vértices pelo id ou pelo rótulo.
+   * Retorna o que precisou ser ajustado: { loops, duplicadas, renomeados }.
    */
   load(data) {
     if (!data || !Array.isArray(data.vertices) || !Array.isArray(data.edges)) {
@@ -205,8 +206,10 @@ class Graph {
     g.nextId = Math.max(0, ...data.vertices.filter(v => validId(v.id)).map(v => Number(v.id))) + 1;
     const kept = new Set();
     const ref = new Map();
+    const ajustes = { loops: 0, duplicadas: 0, renomeados: 0 };
     for (const v of data.vertices) {
       const nv = g.addVertex(Number(v.x) || 0, Number(v.y) || 0, v.label);
+      if (v.label != null && String(v.label).trim() && nv.label !== String(v.label).trim()) ajustes.renomeados++;
       if (validId(v.id) && !kept.has(Number(v.id))) {
         nv.id = Number(v.id);
         kept.add(nv.id);
@@ -219,8 +222,11 @@ class Graph {
       const from = resolve(e.from), to = resolve(e.to);
       if (from == null || to == null) throw new Error(`Aresta com vértice inexistente: ${e.from} → ${e.to}.`);
       const w = Number(e.weight ?? 1);
-      g.addEdge(from, to, Number.isFinite(w) ? w : 1);
+      if (g.addEdge(from, to, Number.isFinite(w) ? w : 1).error) {
+        if (from === to) ajustes.loops++; else ajustes.duplicadas++;
+      }
     }
     Object.assign(this, g);
+    return ajustes;
   }
 }
