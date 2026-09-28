@@ -18,7 +18,7 @@
   const HINTS = {
     move: 'Arraste os vértices para organizá-los. Duplo clique renomeia um vértice ou altera o peso de uma aresta; duplo clique no vazio cria um vértice.',
     vertex: 'Clique em uma área vazia para criar um vértice.',
-    edge: 'Clique no vértice de origem e depois no de destino (ou arraste de um até o outro). Para cancelar, clique de novo no mesmo vértice ou tecle Esc.',
+    edge: 'Clique no vértice de origem e depois no de destino (ou arraste de um até o outro). Clicando duas vezes no mesmo vértice, cria um laço. Esc cancela.',
     delete: 'Clique em um vértice ou aresta para removê-lo.',
   };
 
@@ -39,6 +39,12 @@
       vertices: [['A', 0, .15], ['B', .22, 0], ['C', .22, .4], ['D', .5, .05], ['E', .75, .05], ['F', .75, .45], ['G', .5, .45],
         ['H', .05, .9], ['I', .35, .9], ['J', .9, .9]],
       edges: [['A', 'B'], ['B', 'C'], ['C', 'A'], ['D', 'E'], ['E', 'F'], ['F', 'G'], ['G', 'D'], ['H', 'I']],
+    },
+    multigrafo: {
+      directed: false, weighted: true,
+      vertices: [['A', 0, .5], ['B', .35, 0], ['C', .35, 1], ['D', .75, .5], ['E', 1, .1]],
+      edges: [['A', 'B', 5], ['A', 'B', 2], ['A', 'C', 9], ['B', 'C', 3], ['B', 'B', 7], ['C', 'D', 4],
+        ['D', 'D', 1], ['D', 'E', 6], ['B', 'D', 8]],
     },
     dirigido: {
       directed: true, weighted: false,
@@ -150,30 +156,85 @@
   // ============================================================ desenho
 
   /**
+   * Posição de cada aresta dentro do seu "feixe": arestas paralelas (mesmo par
+   * de vértices, em qualquer sentido) são afastadas umas das outras, e os
+   * laços de um mesmo vértice são distribuídos em leque.
+   */
+  let edgeLayout = new Map();
+
+  function rebuildEdgeLayout() {
+    const grupos = new Map();
+    for (const e of g.edges) {
+      const key = e.from === e.to
+        ? `L${e.from}`
+        : `${Math.min(e.from, e.to)}:${Math.max(e.from, e.to)}`;
+      if (!grupos.has(key)) grupos.set(key, []);
+      grupos.get(key).push(e);
+    }
+    edgeLayout = new Map();
+    for (const lista of grupos.values()) {
+      lista.sort((a, b) => a.id - b.id);
+      lista.forEach((e, i) => edgeLayout.set(e.id, { idx: i, total: lista.length }));
+    }
+  }
+
+  const layoutOf = e => {
+    if (!edgeLayout.has(e.id)) rebuildEdgeLayout();
+    return edgeLayout.get(e.id) || { idx: 0, total: 1 };
+  };
+
+  const fmt = n => n.toFixed(1);
+
+  /** Laço: uma alça que sai e volta ao mesmo vértice. */
+  function loopGeometry(v, idx, flip) {
+    const ang = -Math.PI / 2 + idx * 1.1;          // laços sucessivos abrem em leque
+    const dir = { x: Math.cos(ang), y: Math.sin(ang) };
+    const perp = { x: -dir.y, y: dir.x };
+    const L = R + 46, W = 24;
+    const on = a => ({ x: v.x + R * Math.cos(a), y: v.y + R * Math.sin(a) });
+    let p0 = on(ang - 0.55), p1 = on(ang + 0.55);
+    let c1 = { x: v.x + dir.x * L - perp.x * W, y: v.y + dir.y * L - perp.y * W };
+    let c2 = { x: v.x + dir.x * L + perp.x * W, y: v.y + dir.y * L + perp.y * W };
+    if (flip) { [p0, p1] = [p1, p0]; [c1, c2] = [c2, c1]; }
+    return {
+      d: `M${fmt(p0.x)},${fmt(p0.y)} C${fmt(c1.x)},${fmt(c1.y)} ${fmt(c2.x)},${fmt(c2.y)} ${fmt(p1.x)},${fmt(p1.y)}`,
+      mid: { x: v.x + dir.x * (L * 0.85), y: v.y + dir.y * (L * 0.85) },
+    };
+  }
+
+  /**
    * Geometria de uma aresta. `reverse` percorre o mesmo traçado de trás para
    * frente (usado para animar a exploração no sentido em que ela acontece).
    */
   function edgeGeometry(e, transpose = false, reverse = false) {
-    let a = g.vertex(e.from), b = g.vertex(e.to);
-    if (transpose) [a, b] = [b, a];
+    const { idx, total } = layoutOf(e);
+    const inverte = transpose !== reverse;
+
+    if (e.from === e.to) return loopGeometry(g.vertex(e.from), idx, inverte);
+
+    // A curvatura é calculada sempre na mesma orientação (do menor id para o
+    // maior), para que o traçado não mude quando a aresta é percorrida ao
+    // contrário; só a ordem dos pontos é invertida.
+    const first = Math.min(e.from, e.to), second = Math.max(e.from, e.to);
+    const a = g.vertex(first), b = g.vertex(second);
     const dx = b.x - a.x, dy = b.y - a.y;
     const len = Math.hypot(dx, dy) || 1;
-    const curved = g.directed && g.edges.some(o => o !== e && o.from === e.to && o.to === e.from);
-    const bend = curved ? Math.min(38, len * 0.25) : 0;
+    const bend = (idx - (total - 1) / 2) * Math.min(30, Math.max(18, len * 0.22));
     const cx = (a.x + b.x) / 2 - (dy / len) * bend;
     const cy = (a.y + b.y) / 2 + (dx / len) * bend;
     const toward = (p, r) => {
       const ddx = cx - p.x, ddy = cy - p.y, l = Math.hypot(ddx, ddy) || 1;
       return { x: p.x + (ddx / l) * r, y: p.y + (ddy / l) * r };
     };
-    let p0 = toward(a, R);
-    let p1 = toward(b, R + (g.directed && !reverse ? 1 : 0));
-    if (reverse) [p0, p1] = [p1, p0];
-    const f = n => n.toFixed(1);
-    const d = curved
-      ? `M${f(p0.x)},${f(p0.y)} Q${f(cx)},${f(cy)} ${f(p1.x)},${f(p1.y)}`
-      : `M${f(p0.x)},${f(p0.y)} L${f(p1.x)},${f(p1.y)}`;
-    const mid = curved
+    let p0 = toward(a, R), p1 = toward(b, R);
+    // Ponta da seta no vértice em que a aresta termina, no sentido desenhado.
+    const comecaNoPrimeiro = (inverte ? e.to : e.from) === first;
+    if (!comecaNoPrimeiro) [p0, p1] = [p1, p0];
+
+    const d = bend
+      ? `M${fmt(p0.x)},${fmt(p0.y)} Q${fmt(cx)},${fmt(cy)} ${fmt(p1.x)},${fmt(p1.y)}`
+      : `M${fmt(p0.x)},${fmt(p0.y)} L${fmt(p1.x)},${fmt(p1.y)}`;
+    const mid = bend
       ? { x: 0.25 * a.x + 0.5 * cx + 0.25 * b.x, y: 0.25 * a.y + 0.5 * cy + 0.25 * b.y }
       : { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
     return { d, mid };
@@ -240,6 +301,7 @@
   const setText = (node, text) => { if (node.textContent !== text) node.textContent = text; };
 
   function renderCanvas() {
+    rebuildEdgeLayout();
     const step = currentStep();
     const transpose = !!step?.transpose;
     const hasPath = !!step?.final && Object.values(step.es).includes('path');
@@ -354,14 +416,17 @@
   function renderAdjList() {
     const step = currentStep();
     const vs = g.sortedVertices();
-    $('#listNote').textContent = g.directed
-      ? 'Cada vértice aponta para os vértices alcançados por suas arestas de saída. Memória O(V + E).'
-      : 'Cada vértice lista todos os seus vizinhos (cada aresta aparece duas vezes). Memória O(V + E).';
+    $('#listNote').textContent = (g.directed
+      ? 'Cada vértice aponta para os vértices alcançados por suas arestas de saída. '
+      : 'Cada vértice lista todos os seus vizinhos (cada aresta aparece duas vezes). ') +
+      (g.isMultigraph() ? 'Arestas paralelas aparecem repetidas e o laço aparece como o próprio vértice. ' : '') +
+      'Memória O(V + E).';
     if (!vs.length) { $('#adjList').innerHTML = '<p class="muted">Grafo vazio.</p>'; return; }
 
     $('#adjList').innerHTML = vs.map(v => {
       const cur = step && step.current === v.id && !step.transpose;
-      const nbs = g.neighbors(v.id);
+      // Convenção: em grafo não dirigido o laço aparece duas vezes (grau 2).
+      const nbs = g.neighbors(v.id).flatMap(n => (!g.directed && n.v === v.id ? [n, n] : [n]));
       const items = nbs.length
         ? nbs.map(n => `<span class="adj-node${cur && step.focusVertex === n.v ? ' focus' : ''}">${esc(g.label(n.v))}` +
             (g.weighted ? `<small>${esc(formatNum(n.edge.weight))}</small>` : '') + '</span>').join('<span class="adj-link"></span>')
@@ -373,9 +438,13 @@
   function renderMatrix() {
     const step = currentStep();
     const vs = g.sortedVertices();
+    const multi = g.isMultigraph();
     $('#matrixNote').textContent =
       (g.directed ? 'Linha = origem, coluna = destino. ' : 'Em grafos não dirigidos a matriz é simétrica. ') +
-      (g.weighted ? 'Cada célula mostra o peso da aresta (· = sem aresta). ' : 'Célula 1 = existe aresta, 0 = não existe. ') +
+      (g.weighted
+        ? 'Cada célula mostra o menor peso entre os dois vértices (· = sem aresta)' + (multi ? ', e entre parênteses quantas arestas existem. ' : '. ')
+        : 'Cada célula mostra quantas arestas ligam os dois vértices. ') +
+      (multi && !g.directed && !g.weighted ? 'Cada laço conta 2 na diagonal, como manda a convenção. ' : '') +
       'Memória O(V²); consulta de aresta em O(1).';
     if (!vs.length) { $('#adjMatrix').innerHTML = '<p class="muted">Grafo vazio.</p>'; return; }
 
@@ -386,9 +455,15 @@
     for (const u of vs) {
       html += `<tr class="${u.id === cur ? 'cur' : ''}"><th>${esc(u.label)}</th>`;
       for (const v of vs) {
-        const e = u.id === v.id ? null : g.findEdge(u.id, v.id);
-        const val = e ? (g.weighted ? formatNum(e.weight) : '1') : (g.weighted ? '·' : '0');
-        const cls = [e ? 'one' : 'zero'];
+        const es = g.edgesBetween(u.id, v.id);
+        // Convenção: em grafo não dirigido, um laço conta 2 na diagonal.
+        const n = es.length * (u.id === v.id && !g.directed ? 2 : 1);
+        const val = !es.length
+          ? (g.weighted ? '·' : '0')
+          : g.weighted
+            ? formatNum(Math.min(...es.map(x => x.weight))) + (es.length > 1 ? ` (${es.length})` : '')
+            : String(n);
+        const cls = [es.length ? 'one' : 'zero'];
         if (u.id === cur && v.id === focus) cls.push('focus');
         html += `<td class="${cls.join(' ')}">${esc(val)}</td>`;
       }
@@ -401,11 +476,12 @@
     const n = g.vertices.length, m = g.edges.length;
     const yes = t => `<span class="yes">${t}</span>`, no = t => `<span class="no">${t}</span>`;
     const rows = [
-      ['Tipo', `${g.directed ? 'Dirigido' : 'Não dirigido'}, ${g.weighted ? 'ponderado' : 'sem pesos'}`],
+      ['Tipo', `${g.directed ? 'Dirigido' : 'Não dirigido'}, ${g.weighted ? 'ponderado' : 'sem pesos'}` +
+        (g.isMultigraph() ? ', multigrafo (com laços ou arestas paralelas)' : '')],
       ['Vértices |V|', n],
       ['Arestas |E|', m],
     ];
-    if (n > 1) {
+    if (n > 1 && !g.isMultigraph()) {
       const max = g.directed ? n * (n - 1) : n * (n - 1) / 2;
       rows.push(['Densidade', `${formatNum(m / max)} (${m} de ${max} arestas possíveis)`]);
     }
@@ -790,9 +866,8 @@
     if (v) {
       if (mode === 'delete') { removeVertex(v.id); return; }
       if (mode === 'edge') {
-        if (state.pending === v.id) { state.pending = null; renderCanvas(); return; }
-        if (state.pending != null && state.pending !== v.id) {
-          const from = state.pending;
+        if (state.pending != null) {
+          const from = state.pending;        // mesmo vértice duas vezes = laço
           state.pending = null;
           connect(from, v.id);
         } else {
@@ -1023,9 +1098,8 @@
           afterLoad();
         });
         const avisos = [
-          ajustes.loops && `${ajustes.loops} laço(s) descartado(s)`,
-          ajustes.duplicadas && `${ajustes.duplicadas} aresta(s) repetida(s) descartada(s)`,
           ajustes.renomeados && `${ajustes.renomeados} rótulo(s) repetido(s) renomeado(s)`,
+          ajustes.semVertice && `${ajustes.semVertice} aresta(s) com vértice inexistente descartada(s)`,
         ].filter(Boolean);
         toast(`Grafo "${file.name}" carregado.` + (avisos.length ? ` Ajustes: ${avisos.join('; ')}.` : ''));
       } catch (err) {
@@ -1044,9 +1118,7 @@
   }));
 
   $('#optDirected').addEventListener('change', e => {
-    let merged = 0;
-    edit(() => { merged = g.setDirected(e.target.checked); });
-    if (merged) toast(`${merged} par(es) de arestas opostas foram mesclados em arestas não dirigidas.`);
+    edit(() => { g.setDirected(e.target.checked); });
     updateAlgoOptions();
     structureChanged();
   });

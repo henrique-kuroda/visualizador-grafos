@@ -172,11 +172,11 @@ const Algorithms = (() => {
     return path;
   };
 
-  const markPath = (R, path) => {
+  const markPath = (R, path, parentEdge) => {
     path.forEach(v => { R.vs[v] = 'path'; });
-    for (let i = 0; i + 1 < path.length; i++) {
-      const e = R.g.findEdge(path[i], path[i + 1]);
-      if (e) R.es[e.id] = 'path';
+    for (const v of path.slice(1)) {
+      const id = parentEdge[v];
+      if (id != null) R.es[id] = 'path';
     }
     R.current = null;
   };
@@ -190,7 +190,7 @@ const Algorithms = (() => {
     const R = new Recorder(g);
     const L = id => g.label(id);
     const isPath = t !== null;
-    const dist = {}, parent = {}, order = [], Q = [];
+    const dist = {}, parent = {}, parentEdge = {}, order = [], Q = [];
 
     R.ds = { title: 'Fila Q', kind: 'queue', items: () => Q.map(L) };
     R.table = () => ({
@@ -224,7 +224,7 @@ const Algorithms = (() => {
           R.snap(`${L(v)} já foi visitado: nada a fazer.`, [4, 5], { edge: edge.id, vertex: v });
           continue;
         }
-        dist[v] = dist[u] + 1; parent[v] = u; Q.push(v);
+        dist[v] = dist[u] + 1; parent[v] = u; parentEdge[v] = edge.id; Q.push(v);
         R.vs[v] = 'frontier'; R.es[edge.id] = 'tree';
         R.snap(`${L(v)} ainda não foi visitado: marca, pai[${L(v)}] = ${L(u)}, dist[${L(v)}] = ${dist[v]} e entra no fim da fila.`,
           [6, 7], { edge: edge.id, vertex: v });
@@ -236,7 +236,7 @@ const Algorithms = (() => {
     if (isPath) {
       if (found) {
         const path = tracePath(parent, t);
-        markPath(R, path);
+        markPath(R, path, parentEdge);
         R.snap(`${L(t)} foi alcançado! Seguindo pai[] de volta até ${L(s)}: ${path.map(L).join(' → ')} ` +
           `(${path.length - 1} aresta${path.length - 1 === 1 ? '' : 's'}).`, 8, { final: true });
       } else {
@@ -256,7 +256,7 @@ const Algorithms = (() => {
   function dfs(g, s) {
     const R = new Recorder(g);
     const L = id => g.label(id);
-    const d = {}, f = {}, parent = { [s]: null }, stack = [], order = [];
+    const d = {}, f = {}, parent = { [s]: null }, parentEdge = {}, stack = [], order = [];
     let time = 1, backEdges = 0;
 
     R.ds = { title: 'Pilha de recursão', kind: 'stack', items: () => stack.map(L).reverse() };
@@ -279,17 +279,20 @@ const Algorithms = (() => {
 
       for (const { v, edge } of g.neighbors(u)) {
         if (!(v in d)) {
-          parent[v] = u; R.es[edge.id] = 'tree';
+          parent[v] = u; parentEdge[v] = edge.id; R.es[edge.id] = 'tree';
           R.snap(`${L(v)} não foi visitado: pai[${L(v)}] = ${L(u)} e chama visitar(${L(v)}) — desce um nível.`,
             [4, 5, 6], { edge: edge.id, vertex: v });
           visit(v);
           R.current = u; R.vs[u] = 'current';
           R.snap(`Retorno da recursão: volta para ${L(u)} e continua pelos vizinhos restantes.`, 4);
         } else {
-          const back = !(v in f) && (g.directed || v !== parent[u]);
+          // Em grafo não dirigido, só a própria aresta que trouxe a DFS até u
+          // não conta como retorno — uma aresta paralela a ela conta.
+          const back = !(v in f) && (g.directed || edge.id !== parentEdge[u]);
           if (back) { backEdges++; R.es[edge.id] = 'back'; }
-          R.snap(`${L(v)} já foi visitado: ignora.` +
-            (back ? ` ${L(u)}–${L(v)} é uma aresta de retorno (volta a um ancestral): o grafo tem ciclo!` : ''),
+          const laco = v === u;
+          R.snap(`${laco ? `${L(u)} tem um laço` : `${L(v)} já foi visitado`}: ignora.` +
+            (back ? (laco ? ' Um laço já é um ciclo!' : ` ${L(u)}–${L(v)} é uma aresta de retorno (volta a um ancestral): o grafo tem ciclo!`) : ''),
             [4, 5], { edge: edge.id, vertex: v });
         }
       }
@@ -381,7 +384,7 @@ const Algorithms = (() => {
 
     if (dist[t] < Infinity) {
       const path = tracePath(parent, t);
-      markPath(R, path);
+      markPath(R, path, treeEdge);
       R.snap(`Menor caminho de ${L(s)} até ${L(t)}: ${path.map(L).join(' → ')}, custo total ${formatNum(dist[t])}.`, 8, { final: true });
     } else {
       R.snap(`Não existe caminho de ${L(s)} até ${L(t)}.`, 8, { final: true });
@@ -555,13 +558,14 @@ const Algorithms = (() => {
     return groups;
   }
 
+  /** Considera laços e arestas paralelas como ciclos. */
   function hasCycle(g) {
     const state = {};
-    const visit = (u, parent) => {
+    const visit = (u, viaEdge) => {
       state[u] = 1;
-      for (const { v } of g.neighbors(u)) {
-        if (state[v] === 1 && (g.directed || v !== parent)) return true;
-        if (!state[v] && visit(v, u)) return true;
+      for (const { v, edge } of g.neighbors(u)) {
+        if (state[v] === 1 && (g.directed || edge.id !== viaEdge)) return true;
+        if (!state[v] && visit(v, edge.id)) return true;
       }
       state[u] = 2;
       return false;

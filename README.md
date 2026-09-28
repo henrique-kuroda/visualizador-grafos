@@ -26,6 +26,7 @@ Depois acesse http://localhost:8000.
 |---|---|
 | Criar vértice | Ferramenta **Vértice** (`V`) e clique na área, ou duplo clique no vazio no modo Mover |
 | Criar aresta | Ferramenta **Aresta** (`A`): clique na origem e depois no destino, ou arraste de um até o outro |
+| Criar laço | Ferramenta **Aresta**: clique duas vezes no mesmo vértice |
 | Mover vértice | Arraste-o (modo **Mover**, `M`) |
 | Renomear vértice | Duplo clique no vértice |
 | Alterar peso | Duplo clique na aresta (com "Ponderado" ativo) |
@@ -33,13 +34,15 @@ Depois acesse http://localhost:8000.
 | Desfazer / refazer | `Ctrl+Z` / `Ctrl+Y` (ou os botões da barra de ferramentas) |
 
 - Grafos **dirigidos** ou **não dirigidos**, **ponderados** ou não (chaves no topo).
-- Arestas opostas (A→B e B→A) são desenhadas curvas para não se sobreporem.
+- **Multigrafo**: aceita **laços** (aresta de um vértice para ele mesmo) e **arestas paralelas** (várias arestas entre o mesmo par). Arestas paralelas são desenhadas em leque e os laços como alças, para nenhuma se sobrepor.
 - **Exemplos prontos**, gerador **aleatório**, **layout circular** e **ajuste à tela**.
 - **Importar / exportar** em JSON e salvamento automático no navegador (`localStorage`).
 
 ### Representações (atualizadas em tempo real)
 - **Lista de adjacência**: memória O(V + E).
-- **Matriz de adjacência**: memória O(V²), consulta de aresta em O(1). Mostra 0/1 ou os pesos.
+- **Matriz de adjacência**: memória O(V²), consulta de aresta em O(1). Sem pesos, mostra **quantas** arestas
+  ligam o par (um laço conta 2 na diagonal, em grafo não dirigido); com pesos, mostra o menor peso e,
+  entre parênteses, quantas arestas existem.
 - Durante a execução, a linha do vértice atual e o vizinho examinado ficam destacados nas duas.
 
 ### Algoritmos
@@ -87,7 +90,9 @@ o conteúdo da fila/pilha, a tabela de dados e uma explicação em texto. A inte
 reproduz esses snapshots, por isso é possível avançar, voltar e pular para qualquer passo.
 
 Os vizinhos são sempre percorridos em ordem alfabética do rótulo, então a execução é
-determinística e fácil de conferir à mão.
+determinística e fácil de conferir à mão. Em um multigrafo, cada aresta paralela é examinada
+separadamente, e a detecção de ciclo compara **arestas**, não vértices — por isso um laço ou um par
+de arestas paralelas já é reconhecido como ciclo.
 
 ## Formato do arquivo JSON
 
@@ -105,4 +110,5 @@ determinística e fácil de conferir à mão.
 }
 ```
 
-As arestas podem referenciar os vértices pelo `id` ou pelo `label`.
+As arestas podem referenciar os vértices pelo `id` ou pelo `label`. Repetir o mesmo par cria arestas
+paralelas, e `from` igual a `to` cria um laço.

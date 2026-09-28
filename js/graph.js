@@ -67,23 +67,45 @@ class Graph {
   }
 
   /**
-   * Aresta que liga u → v. Em grafos não dirigidos a orientação
+   * Todas as arestas que ligam u → v (o grafo é um multigrafo: aceita
+   * arestas paralelas e laços). Em grafos não dirigidos a orientação
    * armazenada é irrelevante.
    */
-  findEdge(u, v) {
-    return this.edges.find(e =>
+  edgesBetween(u, v) {
+    return this.edges.filter(e =>
       (e.from === u && e.to === v) ||
       (!this.directed && e.from === v && e.to === u)
-    ) || null;
+    );
+  }
+
+  /** A primeira aresta de u → v, ou null. */
+  findEdge(u, v) {
+    return this.edgesBetween(u, v)[0] || null;
+  }
+
+  /** true se existe laço ou aresta paralela (ou seja, não é um grafo simples). */
+  isMultigraph() {
+    const vistos = new Set();
+    for (const e of this.edges) {
+      if (e.from === e.to) return true;
+      const key = this.directed
+        ? `${e.from}>${e.to}`
+        : `${Math.min(e.from, e.to)}:${Math.max(e.from, e.to)}`;
+      if (vistos.has(key)) return true;
+      vistos.add(key);
+    }
+    return false;
   }
 
   /**
-   * Vizinhos de u, ordenados pelo rótulo (deixa os algoritmos determinísticos).
+   * Uma entrada por aresta incidente a u, ordenada pelo rótulo do vizinho
+   * (deixa os algoritmos determinísticos). Como o grafo é um multigrafo,
+   * arestas paralelas aparecem repetidas e o laço aparece uma vez.
    *  - transpose: usa o grafo transposto (arestas invertidas)
    *  - ignoreDirection: trata o grafo dirigido como não dirigido
    */
   neighbors(u, { transpose = false, ignoreDirection = false } = {}) {
-    const found = new Map();
+    const out = [];
     for (const e of this.edges) {
       let v = null;
       if (this.directed && !ignoreDirection) {
@@ -94,11 +116,9 @@ class Graph {
       } else if (e.to === u) {
         v = e.from;
       }
-      if (v !== null && !found.has(v)) found.set(v, e);
+      if (v !== null) out.push({ v, edge: e, weight: this.weightOf(e) });
     }
-    return [...found]
-      .map(([v, edge]) => ({ v, edge, weight: this.weightOf(edge) }))
-      .sort((a, b) => compareLabels(this.label(a.v), this.label(b.v)));
+    return out.sort((a, b) => compareLabels(this.label(a.v), this.label(b.v)) || a.edge.id - b.edge.id);
   }
 
   degrees(id) {
@@ -147,9 +167,9 @@ class Graph {
     this.edges = this.edges.filter(e => e.from !== id && e.to !== id);
   }
 
+  /** Aceita laços (u = v) e arestas paralelas. */
   addEdge(u, v, weight = 1) {
-    if (u === v) return { error: 'Laços (aresta de um vértice para ele mesmo) não são permitidos.' };
-    if (this.findEdge(u, v)) return { error: 'Essa aresta já existe.' };
+    if (!this.vertex(u) || !this.vertex(v)) return { error: 'Aresta com vértice inexistente.' };
     const e = { id: this.nextId++, from: u, to: v, weight };
     this.edges.push(e);
     return { edge: e };
@@ -160,21 +180,11 @@ class Graph {
   }
 
   /**
-   * Muda o tipo do grafo. Ao virar não dirigido, pares A→B / B→A viram
-   * uma só aresta. Retorna quantas arestas foram mescladas.
+   * Muda o tipo do grafo. Nada é descartado: um par A→B / B→A passa a ser
+   * duas arestas paralelas quando o grafo vira não dirigido.
    */
   setDirected(flag) {
     this.directed = flag;
-    if (flag) return 0;
-    const seen = new Set();
-    const before = this.edges.length;
-    this.edges = this.edges.filter(e => {
-      const key = e.from < e.to ? `${e.from}-${e.to}` : `${e.to}-${e.from}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-    return before - this.edges.length;
   }
 
   // ---------- serialização ----------
@@ -206,7 +216,7 @@ class Graph {
     g.nextId = Math.max(0, ...data.vertices.filter(v => validId(v.id)).map(v => Number(v.id))) + 1;
     const kept = new Set();
     const ref = new Map();
-    const ajustes = { loops: 0, duplicadas: 0, renomeados: 0 };
+    const ajustes = { renomeados: 0, semVertice: 0 };
     for (const v of data.vertices) {
       const nv = g.addVertex(Number(v.x) || 0, Number(v.y) || 0, v.label);
       if (v.label != null && String(v.label).trim() && nv.label !== String(v.label).trim()) ajustes.renomeados++;
@@ -222,9 +232,7 @@ class Graph {
       const from = resolve(e.from), to = resolve(e.to);
       if (from == null || to == null) throw new Error(`Aresta com vértice inexistente: ${e.from} → ${e.to}.`);
       const w = Number(e.weight ?? 1);
-      if (g.addEdge(from, to, Number.isFinite(w) ? w : 1).error) {
-        if (from === to) ajustes.loops++; else ajustes.duplicadas++;
-      }
+      if (g.addEdge(from, to, Number.isFinite(w) ? w : 1).error) ajustes.semVertice++;
     }
     Object.assign(this, g);
     return ajustes;
