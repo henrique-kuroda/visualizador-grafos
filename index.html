@@ -3,74 +3,131 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Visualizador de Grafos</title>
+  <title>Grafos · Visualizador e Editor</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Newsreader:ital,opsz,wght@0,6..72,400..600;1,6..72,400..600&family=Spline+Sans+Mono:wght@400..700&display=swap">
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-  <header class="topbar">
+  <header class="masthead" style="--i:0">
     <div class="brand">
-      <svg class="logo" viewBox="0 0 32 32" aria-hidden="true">
-        <line x1="8" y1="9" x2="24" y2="9"/><line x1="8" y1="9" x2="16" y2="24"/><line x1="24" y1="9" x2="16" y2="24"/>
-        <circle cx="8" cy="9" r="4.5"/><circle cx="24" cy="9" r="4.5"/><circle cx="16" cy="24" r="4.5"/>
+      <svg class="logo" viewBox="0 0 48 48" aria-hidden="true">
+        <g class="logo-ink logo-blue"><line x1="12" y1="14" x2="36" y2="14"/><line x1="12" y1="14" x2="24" y2="36"/><line x1="36" y1="14" x2="24" y2="36"/></g>
+        <circle class="logo-dot logo-yellow" cx="12" cy="14" r="7"/>
+        <circle class="logo-dot logo-pink" cx="36" cy="14" r="7"/>
+        <circle class="logo-dot logo-green" cx="24" cy="36" r="7"/>
+        <g class="logo-key"><circle cx="12" cy="14" r="7"/><circle cx="36" cy="14" r="7"/><circle cx="24" cy="36" r="7"/></g>
       </svg>
-      <div>
-        <h1>Visualizador e Editor de Grafos</h1>
-        <p>Tema 9 · Grupo 05</p>
+      <div class="brand-text">
+        <h1>Grafos<span>.</span></h1>
+        <p>Visualizador &amp; editor · passo a passo</p>
       </div>
+      <span class="stamp">Tema 9 · Grupo 05</span>
     </div>
 
-    <div class="graph-options">
-      <label class="toggle"><input type="checkbox" id="optDirected"><span></span>Dirigido</label>
-      <label class="toggle"><input type="checkbox" id="optWeighted"><span></span>Ponderado</label>
+    <div class="graph-options" role="group" aria-label="Tipo do grafo">
+      <label class="switch">
+        <input type="checkbox" id="optDirected">
+        <span class="switch-track" aria-hidden="true"><span class="switch-knob"></span></span>
+        <span class="switch-text"><b>Dirigido</b><small></small></span>
+      </label>
+      <label class="switch">
+        <input type="checkbox" id="optWeighted">
+        <span class="switch-track" aria-hidden="true"><span class="switch-knob"></span></span>
+        <span class="switch-text"><b>Ponderado</b><small></small></span>
+      </label>
     </div>
 
-    <div class="file-actions">
-      <select id="exampleSelect" aria-label="Carregar exemplo">
-        <option value="">Exemplos…</option>
-        <option value="basico">Não dirigido (BFS / DFS)</option>
-        <option value="ponderado">Ponderado (Dijkstra)</option>
-        <option value="desconexo">Desconexo (componentes)</option>
-        <option value="dirigido">Dirigido (fortemente conexas)</option>
-        <option value="multigrafo">Multigrafo (laços e paralelas)</option>
-      </select>
-      <button id="btnRandom" title="Gerar um grafo aleatório">Aleatório</button>
-      <button id="btnImport" title="Abrir um arquivo .json">Importar</button>
-      <button id="btnExport" title="Salvar o grafo em .json">Exportar</button>
-      <button id="btnClear" class="danger" title="Apagar todo o grafo">Limpar</button>
+    <nav class="file-actions" aria-label="Arquivo">
+      <details class="menu" id="examplesMenu">
+        <summary class="btn" title="Carregar um grafo de exemplo">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H10l2 2h6.5A1.5 1.5 0 0 1 20 7.5v11a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18.5z"/></svg>
+          <span class="lbl">Exemplos</span>
+          <svg class="ico caret" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10l5 5 5-5"/></svg>
+        </summary>
+        <div class="menu-pop" role="menu">
+          <p class="menu-title">Carregar exemplo</p>
+          <button type="button" role="menuitem" data-example="basico"><i style="--c:var(--yellow)"></i><b>Não dirigido</b><small>BFS · DFS</small></button>
+          <button type="button" role="menuitem" data-example="ponderado"><i style="--c:var(--pink)"></i><b>Ponderado</b><small>Dijkstra</small></button>
+          <button type="button" role="menuitem" data-example="desconexo"><i style="--c:var(--green)"></i><b>Desconexo</b><small>Componentes</small></button>
+          <button type="button" role="menuitem" data-example="dirigido"><i style="--c:var(--violet)"></i><b>Dirigido</b><small>Fortemente conexas</small></button>
+          <button type="button" role="menuitem" data-example="multigrafo"><i style="--c:var(--blue)"></i><b>Multigrafo</b><small>Laços e paralelas</small></button>
+        </div>
+      </details>
+      <button id="btnRandom" class="btn" title="Gerar um grafo aleatório">
+        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3"/><circle cx="9" cy="9" r="1.2" class="fill"/><circle cx="15" cy="15" r="1.2" class="fill"/><circle cx="15" cy="9" r="1.2" class="fill"/><circle cx="9" cy="15" r="1.2" class="fill"/></svg>
+        <span class="lbl">Aleatório</span>
+      </button>
+      <button id="btnImport" class="btn" title="Abrir um arquivo .json">
+        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V4M8 8l4-4 4 4M5 14v4.5A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5V14"/></svg>
+        <span class="lbl">Importar</span>
+      </button>
+      <button id="btnExport" class="btn" title="Salvar o grafo em .json">
+        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M8 11l4 4 4-4M5 14v4.5A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5V14"/></svg>
+        <span class="lbl">Exportar</span>
+      </button>
+      <button id="btnClear" class="btn danger" title="Apagar todo o grafo">
+        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        <span class="lbl">Limpar</span>
+      </button>
       <input type="file" id="fileInput" accept=".json,application/json" hidden>
-    </div>
+    </nav>
   </header>
 
-  <main class="layout">
+  <main class="desk">
+    <nav class="rail" role="toolbar" aria-label="Ferramentas de edição" aria-orientation="vertical" style="--i:1">
+      <button class="tool active" data-mode="move" data-tip="Mover / selecionar" aria-label="Mover (M)">
+        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M3 12h18M12 3 9.5 5.5M12 3l2.5 2.5M12 21l-2.5-2.5M12 21l2.5-2.5M3 12l2.5-2.5M3 12l2.5 2.5M21 12l-2.5-2.5M21 12l-2.5 2.5"/></svg>
+        <kbd>M</kbd>
+      </button>
+      <button class="tool" data-mode="vertex" data-tip="Vértice" aria-label="Vértice (V)">
+        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7.5"/><path d="M12 9v6M9 12h6"/></svg>
+        <kbd>V</kbd>
+      </button>
+      <button class="tool" data-mode="edge" data-tip="Aresta" aria-label="Aresta (A)">
+        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="18" r="3"/><circle cx="18" cy="6" r="3"/><path d="M8.2 15.8l7.6-7.6"/></svg>
+        <kbd>A</kbd>
+      </button>
+      <button class="tool" data-mode="delete" data-tip="Remover" aria-label="Remover (R)">
+        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12.5A1.5 1.5 0 0 0 8.5 21h7a1.5 1.5 0 0 0 1.5-1.5L18 7M9 7V4h6v3"/></svg>
+        <kbd>R</kbd>
+      </button>
+
+      <span class="rail-sep" aria-hidden="true"></span>
+
+      <button id="btnUndo" class="rail-btn" data-tip="Desfazer · Ctrl+Z" aria-label="Desfazer" disabled>
+        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>
+      </button>
+      <button id="btnRedo" class="rail-btn" data-tip="Refazer · Ctrl+Y" aria-label="Refazer" disabled>
+        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 14 5-5-5-5M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg>
+      </button>
+
+      <span class="rail-sep" aria-hidden="true"></span>
+
+      <button id="btnCircle" class="rail-btn" data-tip="Layout circular" aria-label="Distribuir os vértices em círculo">
+        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7.5" stroke-dasharray="2.4 3"/><circle cx="12" cy="4.5" r="2" class="fill"/><circle cx="18.5" cy="15.8" r="2" class="fill"/><circle cx="5.5" cy="15.8" r="2" class="fill"/></svg>
+      </button>
+      <button id="btnFit" class="rail-btn" data-tip="Ajustar à tela" aria-label="Ajustar o grafo ao tamanho da área">
+        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>
+      </button>
+    </nav>
+
     <section class="stage">
-      <div class="toolbar" role="toolbar" aria-label="Ferramentas de edição">
-        <div class="tools">
-          <button class="tool active" data-mode="move" title="Mover / selecionar (M)"><kbd>M</kbd> Mover</button>
-          <button class="tool" data-mode="vertex" title="Adicionar vértice (V)"><kbd>V</kbd> Vértice</button>
-          <button class="tool" data-mode="edge" title="Adicionar aresta (A)"><kbd>A</kbd> Aresta</button>
-          <button class="tool" data-mode="delete" title="Remover (R)"><kbd>R</kbd> Remover</button>
-        </div>
-        <div class="tools">
-          <button id="btnUndo" title="Desfazer (Ctrl+Z)" aria-label="Desfazer" disabled>↶ Desfazer</button>
-          <button id="btnRedo" title="Refazer (Ctrl+Y)" aria-label="Refazer" disabled>↷ Refazer</button>
-          <span class="tools-sep"></span>
-          <button id="btnCircle" title="Distribuir os vértices em círculo">Layout circular</button>
-          <button id="btnFit" title="Ajustar o grafo ao tamanho da área">Ajustar à tela</button>
-        </div>
-      </div>
-      <div class="subbar">
+      <div class="caption-bar" style="--i:2">
+        <span class="mode-chip" id="modeChip" data-kind="move">Mover</span>
         <p class="hint" id="hint"></p>
         <div class="legend" id="legend" hidden></div>
       </div>
 
-      <div class="canvas-wrap" id="canvasWrap" data-mode="move">
+      <div class="canvas-wrap" id="canvasWrap" data-mode="move" style="--i:3">
         <svg id="canvas" aria-label="Área de desenho do grafo">
           <defs>
-            <marker id="arrow-idle" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="11" markerHeight="11" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="arrow idle"/></marker>
-            <marker id="arrow-tree" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="13" markerHeight="13" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="arrow tree"/></marker>
-            <marker id="arrow-active" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="14" markerHeight="14" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="arrow active"/></marker>
-            <marker id="arrow-path" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="15" markerHeight="15" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="arrow path"/></marker>
-            <marker id="arrow-back" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="12" markerHeight="12" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="arrow back"/></marker>
+            <marker id="arrow-idle" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="11" markerHeight="11" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0 L10,5 L0,10 L2.5,5 z" class="arrow idle"/></marker>
+            <marker id="arrow-tree" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="13" markerHeight="13" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0 L10,5 L0,10 L2.5,5 z" class="arrow tree"/></marker>
+            <marker id="arrow-active" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="14" markerHeight="14" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0 L10,5 L0,10 L2.5,5 z" class="arrow active"/></marker>
+            <marker id="arrow-path" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="15" markerHeight="15" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0 L10,5 L0,10 L2.5,5 z" class="arrow path"/></marker>
+            <marker id="arrow-back" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="12" markerHeight="12" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0 L10,5 L0,10 L2.5,5 z" class="arrow back"/></marker>
           </defs>
           <g id="edgesLayer"></g>
           <g id="focusLayer"></g>
@@ -80,32 +137,47 @@
         </svg>
         <input id="inlineEditor" class="inline-editor" autocomplete="off" hidden>
         <div class="empty-state" id="emptyState">
-          <strong>O grafo está vazio</strong>
-          Escolha a ferramenta <em>Vértice</em> e clique na área para criar vértices,
-          ou carregue um dos <em>Exemplos</em> no topo.
+          <strong>Folha em branco.</strong>
+          <span>Tecle <kbd>V</kbd> e clique na folha para criar vértices,<br>ou abra os <em>Exemplos</em> no topo.</span>
         </div>
-        <div class="transpose-flag" id="transposeFlag" hidden>Exibindo o grafo transposto Gᵀ</div>
+        <div class="transpose-flag" id="transposeFlag" hidden>Gᵀ · grafo transposto</div>
+        <div class="canvas-meta" aria-hidden="true">
+          <span class="swatches"><i></i><i></i><i></i><i></i><i></i></span>
+          <span id="canvasMeta"></span>
+        </div>
       </div>
 
-      <div class="player idle" id="player">
-        <div class="player-controls">
-          <button id="btnFirst" title="Primeiro passo (Home)" aria-label="Primeiro passo">«</button>
-          <button id="btnPrev" title="Passo anterior (←)" aria-label="Passo anterior">‹</button>
-          <button id="btnPlay" class="primary play" title="Reproduzir / pausar (espaço)" aria-label="Reproduzir">▶</button>
-          <button id="btnNext" title="Próximo passo (→)" aria-label="Próximo passo">›</button>
-          <button id="btnLast" title="Último passo (End)" aria-label="Último passo">»</button>
-          <input type="range" id="stepSlider" min="0" max="0" value="0" aria-label="Linha do tempo">
-          <span class="counter" id="stepCounter">—</span>
-          <label class="speed">Velocidade
-            <select id="speed">
-              <option value="0.5">0,5×</option>
-              <option value="1" selected>1×</option>
-              <option value="2">2×</option>
-              <option value="4">4×</option>
-            </select>
-          </label>
-          <button id="btnStop" title="Encerrar a execução (Esc)">Encerrar</button>
+      <div class="player idle" id="player" style="--i:4">
+        <div class="transport">
+          <button id="btnFirst" class="tp" title="Primeiro passo (Home)" aria-label="Primeiro passo">
+            <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5v14M18 6l-8 6 8 6z" class="fill"/></svg>
+          </button>
+          <button id="btnPrev" class="tp" title="Passo anterior (←)" aria-label="Passo anterior">
+            <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>
+          </button>
+          <button id="btnPlay" class="tp play" title="Reproduzir / pausar (espaço)" aria-label="Executar"></button>
+          <button id="btnNext" class="tp" title="Próximo passo (→)" aria-label="Próximo passo">
+            <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
+          </button>
+          <button id="btnLast" class="tp" title="Último passo (End)" aria-label="Último passo">
+            <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 5v14M6 6l8 6-8 6z" class="fill"/></svg>
+          </button>
         </div>
+        <div class="timeline" id="timeline">
+          <input type="range" id="stepSlider" min="0" max="0" value="0" aria-label="Linha do tempo">
+        </div>
+        <span class="counter" id="stepCounter">—</span>
+        <div class="speed" role="radiogroup" aria-label="Velocidade">
+          <label title="Metade da velocidade"><input type="radio" name="speed" value="0.5"><span>½×</span></label>
+          <label><input type="radio" name="speed" value="1" checked><span>1×</span></label>
+          <label><input type="radio" name="speed" value="2"><span>2×</span></label>
+          <label><input type="radio" name="speed" value="4"><span>4×</span></label>
+        </div>
+        <button id="btnStop" class="stop" title="Encerrar a execução (Esc)">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="1.5" class="fill"/></svg>
+          <span>Encerrar</span>
+        </button>
+
         <div class="player-body">
           <p class="step-msg" id="stepMsg"></p>
           <div class="player-ds" id="playerDs" hidden>
@@ -116,80 +188,84 @@
       </div>
     </section>
 
-    <aside class="sidebar">
-      <nav class="tabs" role="tablist">
-        <button class="tab active" data-tab="algo">Algoritmos</button>
-        <button class="tab" data-tab="list">Lista</button>
-        <button class="tab" data-tab="matrix">Matriz</button>
-        <button class="tab" data-tab="info">Propriedades</button>
+    <aside class="binder" style="--i:5">
+      <nav class="tabs" role="tablist" aria-label="Painéis" aria-orientation="vertical">
+        <button class="tab active" data-tab="algo" role="tab" style="--c:var(--pink)"><span><small>01</small>Algoritmos</span></button>
+        <button class="tab" data-tab="list" role="tab" style="--c:var(--yellow)"><span><small>02</small>Lista</span></button>
+        <button class="tab" data-tab="matrix" role="tab" style="--c:var(--blue)"><span><small>03</small>Matriz</span></button>
+        <button class="tab" data-tab="info" role="tab" style="--c:var(--green)"><span><small>04</small>Propriedades</span></button>
       </nav>
 
-      <div class="tab-panel active" id="tab-algo">
-        <div class="card algo-form">
-          <label class="field">Algoritmo
-            <select id="algoSelect"></select>
-          </label>
-          <div class="field-row">
-            <label class="field" id="srcField">Origem <select id="srcSelect"></select></label>
-            <label class="field" id="dstField">Destino <select id="dstSelect"></select></label>
-          </div>
-          <p class="algo-desc" id="algoDesc"></p>
-          <button id="btnRun" class="primary wide">Executar passo a passo</button>
+      <div class="pages">
+        <div class="tab-panel active" id="tab-algo" role="tabpanel">
+          <section class="sheet">
+            <header class="sheet-head"><span>A</span><h2>Escolha o algoritmo</h2></header>
+            <div class="algo-list" id="algoList" role="radiogroup" aria-label="Algoritmo"></div>
+            <div class="field-row">
+              <label class="field" id="srcField"><span>Origem</span><select id="srcSelect"></select></label>
+              <label class="field" id="dstField"><span>Destino</span><select id="dstSelect"></select></label>
+            </div>
+            <p class="algo-desc" id="algoDesc"></p>
+            <button id="btnRun" class="run-btn">
+              <span>Executar passo a passo</span>
+              <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+            </button>
+          </section>
+
+          <section class="sheet">
+            <header class="sheet-head"><span>B</span><h2>Pseudocódigo</h2></header>
+            <div class="pseudo" id="pseudo"></div>
+          </section>
+
+          <section class="sheet">
+            <header class="sheet-head"><span>C</span><h2>Tabela</h2></header>
+            <div class="table-wrap" id="stateTable"></div>
+          </section>
+
+          <section class="sheet">
+            <header class="sheet-head"><span>D</span><h2>Passos <em id="logCount"></em></h2></header>
+            <ol class="log" id="stepLog"></ol>
+          </section>
         </div>
 
-        <div class="card">
-          <h3>Pseudocódigo</h3>
-          <div class="pseudo" id="pseudo"></div>
+        <div class="tab-panel" id="tab-list" role="tabpanel">
+          <section class="sheet">
+            <header class="sheet-head"><span>A</span><h2>Lista de adjacência</h2></header>
+            <p class="note" id="listNote"></p>
+            <div class="adj-list" id="adjList"></div>
+          </section>
         </div>
 
-        <div class="card">
-          <h3>Tabela</h3>
-          <div class="table-wrap" id="stateTable"></div>
+        <div class="tab-panel" id="tab-matrix" role="tabpanel">
+          <section class="sheet">
+            <header class="sheet-head"><span>A</span><h2>Matriz de adjacência</h2></header>
+            <p class="note" id="matrixNote"></p>
+            <div class="table-wrap" id="adjMatrix"></div>
+          </section>
         </div>
 
-        <div class="card">
-          <h3>Passos <span class="muted" id="logCount"></span></h3>
-          <ol class="log" id="stepLog"></ol>
-        </div>
-      </div>
-
-      <div class="tab-panel" id="tab-list">
-        <div class="card">
-          <h3>Lista de adjacência</h3>
-          <p class="note" id="listNote"></p>
-          <div id="adjList"></div>
-        </div>
-      </div>
-
-      <div class="tab-panel" id="tab-matrix">
-        <div class="card">
-          <h3>Matriz de adjacência</h3>
-          <p class="note" id="matrixNote"></p>
-          <div class="table-wrap" id="adjMatrix"></div>
-        </div>
-      </div>
-
-      <div class="tab-panel" id="tab-info">
-        <div class="card">
-          <h3>Resumo</h3>
-          <div id="graphInfo"></div>
-        </div>
-        <div class="card">
-          <h3>Graus</h3>
-          <div class="table-wrap" id="degreeTable"></div>
-        </div>
-        <div class="card help">
-          <h3>Como usar</h3>
-          <ul>
-            <li><b>Criar vértice:</b> ferramenta <kbd>V</kbd> e clique na área (ou duplo clique no modo Mover).</li>
-            <li><b>Criar aresta:</b> ferramenta <kbd>A</kbd>, clique na origem e depois no destino (ou arraste de um ao outro).</li>
-            <li><b>Mover:</b> arraste um vértice.</li>
-            <li><b>Renomear / mudar peso:</b> duplo clique no vértice ou na aresta.</li>
-            <li><b>Remover:</b> ferramenta <kbd>R</kbd>, botão direito, ou selecione e tecle <kbd>Delete</kbd>.</li>
-            <li><b>Desfazer / refazer:</b> <kbd>Ctrl</kbd>+<kbd>Z</kbd> e <kbd>Ctrl</kbd>+<kbd>Y</kbd>.</li>
-            <li><b>Execução:</b> <kbd>Espaço</kbd> reproduz/pausa, <kbd>←</kbd> <kbd>→</kbd> navegam pelos passos, <kbd>Esc</kbd> encerra.</li>
-            <li>O grafo é salvo automaticamente no navegador.</li>
-          </ul>
+        <div class="tab-panel" id="tab-info" role="tabpanel">
+          <section class="sheet">
+            <header class="sheet-head"><span>A</span><h2>Resumo</h2></header>
+            <div id="graphInfo"></div>
+          </section>
+          <section class="sheet">
+            <header class="sheet-head"><span>B</span><h2>Graus</h2></header>
+            <div class="table-wrap" id="degreeTable"></div>
+          </section>
+          <section class="sheet help">
+            <header class="sheet-head"><span>C</span><h2>Como usar</h2></header>
+            <ul>
+              <li><b>Criar vértice</b> ferramenta <kbd>V</kbd> e clique na folha, ou duplo clique no vazio no modo Mover.</li>
+              <li><b>Criar aresta</b> ferramenta <kbd>A</kbd>: clique na origem e depois no destino, ou arraste de um ao outro.</li>
+              <li><b>Mover</b> arraste um vértice.</li>
+              <li><b>Renomear / peso</b> duplo clique no vértice ou na aresta.</li>
+              <li><b>Remover</b> ferramenta <kbd>R</kbd>, botão direito, ou selecione e tecle <kbd>Delete</kbd>.</li>
+              <li><b>Desfazer</b> <kbd>Ctrl</kbd>+<kbd>Z</kbd> · refazer <kbd>Ctrl</kbd>+<kbd>Y</kbd>.</li>
+              <li><b>Execução</b> <kbd>Espaço</kbd> reproduz/pausa, <kbd>←</kbd> <kbd>→</kbd> navegam, <kbd>Esc</kbd> encerra.</li>
+              <li><b>Salvamento</b> o grafo fica salvo automaticamente no navegador.</li>
+            </ul>
+          </section>
         </div>
       </div>
     </aside>

@@ -19,6 +19,23 @@ python -m http.server 8000
 
 Depois acesse http://localhost:8000.
 
+As fontes (Bricolage Grotesque, Newsreader e Spline Sans Mono) vêm do Google Fonts; sem internet,
+a página continua funcionando com as fontes do sistema.
+
+## Interface
+
+O visual imita uma **impressão risográfica**: papel quente, malha de papel milimetrado e poucas
+tintas chapadas, cada uma com um significado fixo durante a execução (amarelo = na fila,
+rosa = atual / aresta examinada, verde = visitado / árvore, azul = caminho).
+
+| Área | O que tem |
+|---|---|
+| **Topo** | Chaves *Dirigido* e *Ponderado*, menu de exemplos, aleatório, importar, exportar e limpar |
+| **Trilho à esquerda** | Ferramentas (Mover, Vértice, Aresta, Remover), desfazer/refazer, layout circular e ajuste à tela |
+| **Folha** | Área de desenho; acima dela, o modo atual e a dica (ou a legenda, durante a execução) |
+| **Player** | Controles, linha do tempo com uma marca por passo, velocidade, explicação do passo e a fila/pilha em fichas |
+| **Fichário à direita** | Abas *Algoritmos*, *Lista*, *Matriz* e *Propriedades* |
+
 ## Funcionalidades
 
 ### Edição visual
@@ -59,6 +76,8 @@ A aba **Propriedades** resume o grafo: número de vértices e arestas, densidade
 (entrada/saída em dirigidos), se é conexo / fortemente conexo, componentes e se possui ciclo.
 
 ### Controles da execução
+- Escolha o algoritmo em um dos cartões da aba **Algoritmos** e clique em **Executar passo a passo**
+  (ou no `▶` do player, que também inicia a execução)
 - `▶` / `Espaço`: reproduzir ou pausar
 - `‹` `›` / `←` `→`: passo anterior ou próximo
 - `«` `»` / `Home` `End`: primeiro ou último passo
@@ -66,9 +85,10 @@ A aba **Propriedades** resume o grafo: número de vértices e arestas, densidade
 - `Esc`: encerra a execução
 
 Durante a execução:
-- a **fila / pilha / fila de prioridade** aparece ao lado da explicação do passo, embaixo do grafo;
+- a **fila / pilha / fila de prioridade** aparece como uma fileira de fichas ao lado da explicação do passo;
 - a aresta examinada é "traçada" do vértice atual até o vizinho, e as cores mudam com transição suave;
 - o vértice atual pulsa, e cada vértice mostra um selo com seu valor (distância, d/f, componente);
+- a linha do pseudocódigo em execução fica marcada como com marca-texto;
 - a **legenda** acima do grafo mostra só as cores usadas pelo algoritmo escolhido.
 
 ## Estrutura do projeto
@@ -76,7 +96,7 @@ Durante a execução:
 ```
 visualizador-grafos/
 ├── index.html          # estrutura da página
-├── css/style.css       # estilos
+├── css/style.css       # estilos (tema risográfico)
 └── js/
     ├── graph.js        # classe Graph: vértices, arestas, vizinhos, JSON
     ├── algorithms.js   # BFS, DFS, Dijkstra, componentes, Kosaraju + pseudocódigos

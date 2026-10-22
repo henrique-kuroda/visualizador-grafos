@@ -13,7 +13,23 @@
   const R = 20;                 // raio do vértice
   const MAX_VERTICES = 60;
   const STORAGE_KEY = 'visualizador-grafos:v1';
-  const COMP_COLORS = ['#93c5fd', '#fca5a5', '#86efac', '#fcd34d', '#c4b5fd', '#f9a8d4', '#5eead4', '#fdba74', '#a5b4fc', '#bef264'];
+  // Tintas risográficas (em tom claro, para o rótulo continuar legível).
+  const COMP_COLORS = ['#ffe800', '#ffc6e5', '#c9d3ee', '#ade6c8', '#ffccb4', '#d8cdef', '#9fe3e0', '#fff5a3', '#f7b8b3', '#d6ec9a'];
+
+  const MODE_NAMES = { move: 'Mover', vertex: 'Vértice', edge: 'Aresta', delete: 'Remover' };
+
+  // Etiqueta e tinta de cada algoritmo nos cartões do fichário.
+  const ALGO_META = {
+    bfs: { tag: 'BFS', color: 'var(--yellow)' },
+    dfs: { tag: 'DFS', color: 'var(--orange)' },
+    'path-bfs': { tag: 'MIN', color: 'var(--blue)', on: 'var(--paper-hi)' },
+    dijkstra: { tag: 'DIJ', color: 'var(--pink)' },
+    components: { tag: 'CC', color: 'var(--green)', on: 'var(--paper-hi)' },
+    scc: { tag: 'SCC', color: 'var(--violet)', on: 'var(--paper-hi)' },
+  };
+
+  const ICON_PLAY = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10.5-6.5z" class="fill"/></svg>';
+  const ICON_PAUSE = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="6.5" y="5" width="3.6" height="14" rx="1" class="fill"/><rect x="13.9" y="5" width="3.6" height="14" rx="1" class="fill"/></svg>';
 
   const HINTS = {
     move: 'Arraste os vértices para organizá-los. Duplo clique renomeia um vértice ou altera o peso de uma aresta; duplo clique no vazio cria um vértice.',
@@ -57,6 +73,7 @@
   const g = new Graph();
   const state = {
     mode: 'move',
+    algo: 'bfs',      // algoritmo escolhido no fichário
     selected: null,   // vértice selecionado
     pending: null,    // origem de uma aresta em criação
     drag: null,
@@ -279,12 +296,20 @@
     if (!el) {
       const root = svgEl('g', 'vertex', verticesLayer);
       root.dataset.id = v.id;
-      svgEl('circle', 'halo', root).setAttribute('r', R + 6);
-      const body = svgEl('circle', 'body', root);
+      // `token` agrupa a ficha para a animação de entrada; a sombra deslocada
+      // fica atrás da face, que "levanta" ao passar o mouse ou arrastar.
+      const token = svgEl('g', 'token', root);
+      const shadow = svgEl('circle', 'shadow', token);
+      shadow.setAttribute('r', R);
+      shadow.setAttribute('cx', 2.5);
+      shadow.setAttribute('cy', 3);
+      svgEl('circle', 'halo', token).setAttribute('r', R + 6);
+      const face = svgEl('g', 'face', token);
+      const body = svgEl('circle', 'body', face);
       body.setAttribute('r', R);
-      const label = svgEl('text', 'label', root);
+      const label = svgEl('text', 'label', face);
       label.setAttribute('dy', '0.35em');
-      const badge = svgEl('g', 'badge', root);
+      const badge = svgEl('g', 'badge', token);
       badge.setAttribute('transform', `translate(${R + 4},${-R + 1})`);
       const badgeBg = svgEl('rect', null, badge);
       badgeBg.setAttribute('height', 18);
@@ -329,6 +354,7 @@
       if (step && step.focusVertex === v.id) cls.push('focus');
       if (state.selected === v.id && !step) cls.push('selected');
       if (state.pending === v.id) cls.push('pending');
+      if (state.drag?.moved && state.drag.id === v.id) cls.push('dragging');
       el.root.setAttribute('class', cls.join(' '));
       el.root.setAttribute('transform', `translate(${v.x.toFixed(1)},${v.y.toFixed(1)})`);
       const comp = step?.comp[v.id];
@@ -352,6 +378,23 @@
     $('#hint').hidden = !!step;
     $('#legend').hidden = !step;
     $('#transposeFlag').hidden = !transpose;
+    wrap.classList.toggle('running', !!step);
+    updateCaption(step);
+  }
+
+  /** Etiqueta do modo atual (ou do algoritmo em execução) e o rodapé da folha. */
+  function updateCaption(step) {
+    const chip = $('#modeChip');
+    if (step) {
+      setText(chip, `Executando · ${ALGO_META[state.run.name].tag}`);
+      chip.dataset.kind = 'run';
+    } else {
+      setText(chip, MODE_NAMES[state.mode]);
+      chip.dataset.kind = state.mode;
+    }
+    const n = g.vertices.length, m = g.edges.length;
+    setText($('#canvasMeta'), `${n} ${n === 1 ? 'vértice' : 'vértices'} · ${m} ${m === 1 ? 'aresta' : 'arestas'} · ` +
+      `${g.directed ? 'dirigido' : 'não dirigido'}${g.weighted ? ' · ponderado' : ''}`);
   }
 
   /**
@@ -464,6 +507,7 @@
             ? formatNum(Math.min(...es.map(x => x.weight))) + (es.length > 1 ? ` (${es.length})` : '')
             : String(n);
         const cls = [es.length ? 'one' : 'zero'];
+        if (u.id === v.id) cls.push('diag');
         if (u.id === cur && v.id === focus) cls.push('focus');
         html += `<td class="${cls.join(' ')}">${esc(val)}</td>`;
       }
@@ -475,16 +519,15 @@
   function renderInfo() {
     const n = g.vertices.length, m = g.edges.length;
     const yes = t => `<span class="yes">${t}</span>`, no = t => `<span class="no">${t}</span>`;
+    const stats = [['|V|', n, n === 1 ? 'vértice' : 'vértices'], ['|E|', m, m === 1 ? 'aresta' : 'arestas']];
+    if (n > 1 && !g.isMultigraph()) {
+      const max = g.directed ? n * (n - 1) : n * (n - 1) / 2;
+      stats.push(['densidade', formatNum(m / max), `${m} de ${max} possíveis`]);
+    }
     const rows = [
       ['Tipo', `${g.directed ? 'Dirigido' : 'Não dirigido'}, ${g.weighted ? 'ponderado' : 'sem pesos'}` +
         (g.isMultigraph() ? ', multigrafo (com laços ou arestas paralelas)' : '')],
-      ['Vértices |V|', n],
-      ['Arestas |E|', m],
     ];
-    if (n > 1 && !g.isMultigraph()) {
-      const max = g.directed ? n * (n - 1) : n * (n - 1) / 2;
-      rows.push(['Densidade', `${formatNum(m / max)} (${m} de ${max} arestas possíveis)`]);
-    }
     if (n) {
       const weak = Algorithms.weakComponents(g);
       if (g.directed) {
@@ -498,22 +541,27 @@
       }
       rows.push(['Possui ciclo', Algorithms.hasCycle(g) ? 'Sim' : 'Não']);
     }
-    $('#graphInfo').innerHTML = `<dl class="info-grid">${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>`;
+    $('#graphInfo').innerHTML =
+      `<div class="stats">${stats.map(([k, v, s]) => `<div class="stat"><span class="stat-k">${k}</span><b>${v}</b><small>${s}</small></div>`).join('')}</div>` +
+      `<dl class="info-grid">${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>`;
 
     const vs = g.sortedVertices();
     if (!vs.length) { $('#degreeTable').innerHTML = '<p class="muted">Grafo vazio.</p>'; return; }
-    const head = g.directed ? ['Vértice', 'Entrada', 'Saída', 'Total'] : ['Vértice', 'Grau'];
-    const body = vs.map(v => {
-      const d = g.degrees(v.id);
+    const head = g.directed ? ['Vértice', 'Entrada', 'Saída', 'Total', ''] : ['Vértice', 'Grau', ''];
+    const degrees = vs.map(v => g.degrees(v.id));
+    const maxDeg = Math.max(1, ...degrees.map(d => d.total));
+    const body = vs.map((v, i) => {
+      const d = degrees[i];
       const cells = g.directed ? [v.label, d.in, d.out, d.total] : [v.label, d.total];
-      return `<tr>${cells.map(c => `<td>${esc(c)}</td>`).join('')}</tr>`;
+      return `<tr>${cells.map(c => `<td>${esc(c)}</td>`).join('')}` +
+        `<td class="degree-bar"><i style="--w:${(d.total / maxDeg).toFixed(3)}"></i></td></tr>`;
     }).join('');
-    const sum = vs.reduce((acc, v) => acc + g.degrees(v.id).total, 0);
+    const sum = degrees.reduce((acc, d) => acc + d.total, 0);
     const foot = g.directed
       ? `Soma das entradas = soma das saídas = |E| = ${m}.`
       : `Soma dos graus = ${sum} = 2·|E| (lema do aperto de mãos).`;
     $('#degreeTable').innerHTML = `<table class="data"><thead><tr>${head.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table>` +
-      `<p class="note" style="margin:8px 0 0">${foot}</p>`;
+      `<p class="foot-note">${foot}</p>`;
   }
 
   // ======================================================= execução / player
@@ -533,7 +581,13 @@
     $('#dsTitle').textContent = ds.title;
     box.className = `ds ${ds.kind}`;
     if (!ds.items.length) { box.innerHTML = '<span class="muted">vazia</span>'; return; }
-    const chips = ds.items.map((x, i) => `<span class="chip${i === 0 ? ' head' : ''}">${esc(x)}</span>`).join('');
+    // Na fila de prioridade cada item vem como "rótulo: distância".
+    const chip = (x, i) => {
+      const s = String(x), cut = ds.kind === 'pq' ? s.lastIndexOf(': ') : -1;
+      const inner = cut < 0 ? esc(s) : `${esc(s.slice(0, cut))}<small>${esc(s.slice(cut + 2))}</small>`;
+      return `<span class="chip${i === 0 ? ' head' : ''}" style="animation-delay:${Math.min(i, 8) * 25}ms">${inner}</span>`;
+    };
+    const chips = ds.items.map(chip).join('');
     const start = { queue: 'início', stack: 'topo', pq: 'mínimo' }[ds.kind];
     box.innerHTML = `<span class="end">${start} →</span>${chips}${ds.kind === 'queue' ? '<span class="end">← fim</span>' : ''}`;
   }
@@ -566,30 +620,44 @@
     const run = state.run;
     const step = currentStep();
     $('#player').classList.toggle('idle', !run);
-    ['#btnFirst', '#btnPrev', '#btnPlay', '#btnNext', '#btnLast', '#stepSlider', '#btnStop']
+    // Parado, o ▶ continua ativo: ele inicia a execução do algoritmo escolhido.
+    ['#btnFirst', '#btnPrev', '#btnNext', '#btnLast', '#stepSlider', '#btnStop']
       .forEach(s => { $(s).disabled = !run; });
 
-    renderPseudo(run ? run.name : $('#algoSelect').value, step ? [].concat(step.line) : []);
+    renderPseudo(run ? run.name : state.algo, step ? [].concat(step.line) : []);
     renderDs(step);
     renderTable(step);
 
     const msg = $('#stepMsg');
+    const slider = $('#stepSlider');
     if (!run) {
       $('#stepCounter').textContent = '—';
-      $('#stepSlider').max = 0;
-      $('#stepSlider').value = 0;
+      slider.max = 0;
+      slider.value = 0;
+      slider.style.setProperty('--pct', '0%');
       msg.className = 'step-msg';
-      msg.textContent = 'Monte o grafo, escolha um algoritmo na barra lateral e clique em "Executar passo a passo".';
+      const info = Algorithms.INFO[state.algo];
+      const src = info.src && g.vertex(Number($('#srcSelect').value));
+      msg.innerHTML = `Pronto para <b>${esc(info.name)}</b>${src ? ` a partir de <b>${esc(src.label)}</b>` : ''}. ` +
+        'Pressione ▶ para acompanhar a execução passo a passo.';
       updatePlayButton();
       return;
     }
 
     const n = run.steps.length;
-    $('#stepSlider').max = n - 1;
-    $('#stepSlider').value = run.idx;
-    $('#stepCounter').textContent = `Passo ${run.idx + 1} de ${n}`;
+    slider.max = n - 1;
+    slider.value = run.idx;
+    slider.style.setProperty('--pct', `${n > 1 ? (run.idx / (n - 1)) * 100 : 100}%`);
+    // Marcas da linha do tempo: uma por passo, escondidas quando ficariam coladas.
+    const tl = $('#timeline');
+    tl.style.setProperty('--tick', `${100 / Math.max(1, n - 1)}%`);
+    tl.classList.toggle('dense', n > 70);
+    $('#stepCounter').innerHTML = `<b>${String(run.idx + 1).padStart(2, '0')}</b>/${n}`;
     msg.className = `step-msg${step.final ? ' final' : ''}`;
     msg.textContent = step.msg;
+    msg.style.animation = 'none';
+    void msg.offsetWidth; // reinicia a animação de entrada do texto
+    msg.style.animation = '';
 
     const log = $('#stepLog');
     [...log.children].forEach((li, i) => {
@@ -615,7 +683,7 @@
 
   function startRun() {
     commitEditor();
-    const name = $('#algoSelect').value;
+    const name = state.algo;
     const src = Number($('#srcSelect').value);
     const dst = Number($('#dstSelect').value);
     const res = Algorithms.run(name, g, src, dst);
@@ -646,7 +714,7 @@
     renderStep();
   }
 
-  const stepDelay = () => 1300 / Number($('#speed').value);
+  const stepDelay = () => 1300 / Number($('input[name="speed"]:checked').value);
 
   function play() {
     if (!state.run) return;
@@ -671,30 +739,43 @@
 
   function updatePlayButton() {
     const btn = $('#btnPlay');
-    btn.textContent = state.timer ? '❚❚' : '▶';
-    btn.setAttribute('aria-label', state.timer ? 'Pausar' : 'Reproduzir');
+    btn.innerHTML = state.timer ? ICON_PAUSE : ICON_PLAY;
+    btn.setAttribute('aria-label', state.timer ? 'Pausar' : state.run ? 'Reproduzir' : 'Executar');
   }
 
   // ======================================================= seleção de algoritmo
 
+  const algoAllowed = key => !(Algorithms.INFO[key].directedOnly && !g.directed);
+
+  /** Cartões do fichário, um por algoritmo. */
   function updateAlgoOptions() {
-    const sel = $('#algoSelect');
-    const prev = sel.value || 'bfs';
-    sel.innerHTML = Object.entries(Algorithms.INFO)
-      .map(([key, info]) => `<option value="${key}"${info.directedOnly && !g.directed ? ' disabled' : ''}>${esc(info.name)}` +
-        `${info.directedOnly && !g.directed ? ' — só dirigidos' : ''}</option>`)
-      .join('');
-    const prevInfo = Algorithms.INFO[prev];
-    sel.value = prevInfo && !(prevInfo.directedOnly && !g.directed) ? prev : 'components';
+    if (!algoAllowed(state.algo)) state.algo = 'components';
+    $('#algoList').innerHTML = Object.entries(Algorithms.INFO).map(([key, info]) => {
+      const meta = ALGO_META[key];
+      const [, title, extra] = info.name.match(/^(.*?)\s*\((.*)\)$/) || [null, info.name, ''];
+      const sub = algoAllowed(key)
+        ? [extra, info.desc.match(/O\([^)]*\)/)?.[0]].filter(Boolean).join(' · ')
+        : 'só em grafos dirigidos';
+      return `<button type="button" class="algo-card" role="radio" data-algo="${key}" aria-checked="${key === state.algo}"` +
+        `${algoAllowed(key) ? '' : ' disabled'} style="--c:${meta.color};--on:${meta.on || 'var(--ink)'}">` +
+        `<span class="algo-tag">${meta.tag}</span><span class="algo-name">${esc(title)}<small>${esc(sub)}</small></span></button>`;
+    }).join('');
+    updateAlgoForm();
+  }
+
+  function selectAlgo(key) {
+    if (!Algorithms.INFO[key] || !algoAllowed(key)) return;
+    state.algo = key;
+    $$('.algo-card').forEach(c => c.setAttribute('aria-checked', String(c.dataset.algo === key)));
     updateAlgoForm();
   }
 
   function updateAlgoForm() {
-    const info = Algorithms.INFO[$('#algoSelect').value];
+    const info = Algorithms.INFO[state.algo];
     $('#srcField').hidden = !info.src;
     $('#dstField').hidden = !info.dst;
     $('#algoDesc').textContent = info.desc;
-    if (!state.run) renderPseudo($('#algoSelect').value, []);
+    if (!state.run) renderRunPanel();
   }
 
   function refreshSelectors(reset = false) {
@@ -966,7 +1047,8 @@
   // ---------- teclado
 
   document.addEventListener('keydown', e => {
-    const typing = !!e.target.closest?.('input, select, textarea');
+    // Chaves, botões de rádio e a linha do tempo não recebem texto: os atalhos continuam valendo.
+    const typing = !!e.target.closest?.('input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), select, textarea');
     if ((e.ctrlKey || e.metaKey) && !e.altKey && !typing) {
       const k = e.key.toLowerCase();
       if (k === 'z' && !e.shiftKey) { e.preventDefault(); undo(); return; }
@@ -978,7 +1060,8 @@
     if (modes[key.toLowerCase()]) { setMode(modes[key.toLowerCase()]); return; }
 
     if (key === 'Escape') {
-      if (state.pending != null) { state.pending = null; renderCanvas(); }
+      if ($('#examplesMenu').open) { $('#examplesMenu').open = false; $('#examplesMenu summary').focus(); }
+      else if (state.pending != null) { state.pending = null; renderCanvas(); }
       else if (state.run) stopRun();
       else { state.selected = null; renderCanvas(); }
       return;
@@ -989,8 +1072,8 @@
       return;
     }
     if (!state.run) return;
-    // Espaço/setas pertencem ao elemento focado quando ele é um botão ou link.
-    if (e.target.closest?.('button, a[href], [role="button"]')) return;
+    // Espaço/setas pertencem ao elemento focado quando ele é um botão, link ou controle.
+    if (e.target.closest?.('button, a[href], [role="button"], summary, input')) return;
     const actions = {
       ArrowRight: () => { pause(); goTo(state.run.idx + 1); },
       ArrowLeft: () => { pause(); goTo(state.run.idx - 1); },
@@ -1113,7 +1196,10 @@
 
   $$('.tool').forEach(b => b.addEventListener('click', () => setMode(b.dataset.mode)));
   $$('.tab').forEach(b => b.addEventListener('click', () => {
-    $$('.tab').forEach(t => t.classList.toggle('active', t === b));
+    $$('.tab').forEach(t => {
+      t.classList.toggle('active', t === b);
+      t.setAttribute('aria-selected', String(t === b));
+    });
     $$('.tab-panel').forEach(p => p.classList.toggle('active', p.id === `tab-${b.dataset.tab}`));
   }));
 
@@ -1128,9 +1214,17 @@
     if (g.weighted && g.edges.length) toast('Dê um duplo clique em uma aresta para alterar o peso.');
   });
 
-  $('#exampleSelect').addEventListener('change', e => {
-    if (e.target.value) edit(() => loadExample(e.target.value));
-    e.target.value = '';
+  const examplesMenu = $('#examplesMenu');
+  examplesMenu.addEventListener('click', e => {
+    const item = e.target.closest('[data-example]');
+    if (!item) return;
+    examplesMenu.open = false;
+    edit(() => loadExample(item.dataset.example));
+    toast(`Exemplo "${item.querySelector('b').textContent}" carregado.`);
+  });
+  // Fecha o menu ao clicar fora dele.
+  document.addEventListener('pointerdown', e => {
+    if (examplesMenu.open && !examplesMenu.contains(e.target)) examplesMenu.open = false;
   });
   $('#btnRandom').addEventListener('click', () => edit(randomGraph));
   $('#btnExport').addEventListener('click', exportGraph);
@@ -1151,16 +1245,20 @@
   $('#btnUndo').addEventListener('click', undo);
   $('#btnRedo').addEventListener('click', redo);
 
-  $('#algoSelect').addEventListener('change', updateAlgoForm);
+  $('#algoList').addEventListener('click', e => {
+    const card = e.target.closest('.algo-card');
+    if (card) selectAlgo(card.dataset.algo);
+  });
+  $('#srcSelect').addEventListener('change', () => { if (!state.run) renderRunPanel(); });
   $('#btnRun').addEventListener('click', startRun);
-  $('#btnPlay').addEventListener('click', togglePlay);
+  $('#btnPlay').addEventListener('click', () => (state.run ? togglePlay() : startRun()));
   $('#btnFirst').addEventListener('click', () => { pause(); goTo(0); });
   $('#btnPrev').addEventListener('click', () => { pause(); goTo(state.run.idx - 1); });
   $('#btnNext').addEventListener('click', () => { pause(); goTo(state.run.idx + 1); });
   $('#btnLast').addEventListener('click', () => { pause(); goTo(state.run.steps.length - 1); });
   $('#btnStop').addEventListener('click', stopRun);
   $('#stepSlider').addEventListener('input', e => { pause(); goTo(Number(e.target.value)); });
-  $('#speed').addEventListener('change', () => { if (state.timer) play(); });
+  $$('input[name="speed"]').forEach(r => r.addEventListener('change', () => { if (state.timer) play(); }));
   $('#stepLog').addEventListener('click', e => {
     const li = e.target.closest('li[data-i]');
     if (li) { pause(); goTo(Number(li.dataset.i)); }
